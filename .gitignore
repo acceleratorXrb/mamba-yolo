@@ -39,3 +39,6 @@ nonfinite_forward_*.json
 official-mamba-yolo/nonfinite_forward_*.json
 yolov8n.pt
 official-mamba-yolo/yolov8n.pt
+
+# Local reference materials
+references/
