@@ -1,0 +1,33 @@
+# Strict full-UAVDT benchmark preset.
+# Differences from the regular benchmark preset:
+# 1. Keep the current AdamW + init-fix training setup.
+# 2. Disable in-training validation to avoid touching the official test split during training.
+# 3. Use external post-training evaluation on test for the final benchmark numbers.
+
+epochs: 50
+batch: 24
+imgsz: 640
+workers: 8
+optimizer: AdamW
+amp: false
+val: false
+
+lr0: 0.001
+lrf: 0.1
+cos_lr: true
+weight_decay: 0.0005
+warmup_epochs: 3.0
+warmup_momentum: 0.85
+warmup_bias_lr: 0.05
+
+close_mosaic: 5
+mosaic: 0.5
+translate: 0.05
+scale: 0.2
+hsv_h: 0.015
+hsv_s: 0.4
+hsv_v: 0.25
+fliplr: 0.5
+flipud: 0.0
+mixup: 0.0
+copy_paste: 0.0

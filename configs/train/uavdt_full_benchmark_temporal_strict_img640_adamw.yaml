@@ -1,0 +1,36 @@
+# Strict full-UAVDT temporal benchmark preset.
+# Temporal branch doubles the forward path, so batch size is reduced.
+# Mosaic/mixup are disabled in the first temporal baseline because current/previous
+# frame augmentations are not yet explicitly synchronized.
+
+epochs: 50
+batch: 4
+imgsz: 640
+workers: 8
+optimizer: AdamW
+amp: false
+val: false
+
+temporal: true
+temporal_stride: 1
+temporal_clip_length: 3
+
+lr0: 0.001
+lrf: 0.1
+cos_lr: true
+weight_decay: 0.0005
+warmup_epochs: 3.0
+warmup_momentum: 0.85
+warmup_bias_lr: 0.05
+
+close_mosaic: 0
+mosaic: 0.0
+translate: 0.05
+scale: 0.2
+hsv_h: 0.015
+hsv_s: 0.4
+hsv_v: 0.25
+fliplr: 0.5
+flipud: 0.0
+mixup: 0.0
+copy_paste: 0.0
