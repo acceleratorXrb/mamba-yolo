@@ -118,10 +118,21 @@ names:
 EOF
 }
 
+has_uavdt_archives() {
+  local dir="$ROOT/data/raw/uavdt_full"
+  [[ -f "$dir/UAV-benchmark-M.zip" ]] && \
+  [[ -f "$dir/UAV-benchmark-MOTD_v1.0.zip" ]] && \
+  [[ -f "$dir/M_attr.zip" ]]
+}
+
 prepare_uavdt() {
   mkdir -p "$ROOT/data/raw/uavdt_full"
-  "$PYTHON_BIN" "$ROOT/scripts/download_uavdt_official.py" \
-    --output-dir "$ROOT/data/raw/uavdt_full"
+  if has_uavdt_archives; then
+    echo "skip UAVDT download: required archives already exist in data/raw/uavdt_full"
+  else
+    "$PYTHON_BIN" "$ROOT/scripts/download_uavdt_official.py" \
+      --output-dir "$ROOT/data/raw/uavdt_full"
+  fi
 
   mkdir -p "$ROOT/data/external/uavdt_full"
   unzip -o "$ROOT/data/raw/uavdt_full/UAV-benchmark-M.zip" -d "$ROOT/data/external/uavdt_full"
