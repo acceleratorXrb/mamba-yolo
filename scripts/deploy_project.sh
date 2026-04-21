@@ -171,13 +171,7 @@ train_visdrone_singleframe() {
     --cfg configs/train/visdrone_vid_singleframe_dev.yaml \
     --project output_dir/visdrone_vid \
     --name mambayolo_visdrone_vid_singleframe_baseline \
-    --device 0 \
-    --batch_size 16 \
-    --workers 4 \
-    --epochs 30 \
-    --optimizer AdamW \
-    --no-amp \
-    --val
+    --device 0
 }
 
 train_visdrone_temporal() {
@@ -189,13 +183,7 @@ train_visdrone_temporal() {
     --cfg configs/train/visdrone_vid_temporal_dev.yaml \
     --project output_dir/visdrone_vid \
     --name mambayolo_visdrone_vid_temporal_dev \
-    --device 0 \
-    --batch_size 6 \
-    --workers 4 \
-    --epochs 30 \
-    --optimizer AdamW \
-    --no-amp \
-    --val
+    --device 0
 }
 
 train_uavdt_temporal() {
@@ -207,13 +195,7 @@ train_uavdt_temporal() {
     --cfg configs/train/uavdt_full_benchmark_temporal_dev_img640_adamw.yaml \
     --project output_dir/uavdt_full_benchmark \
     --name mambayolo_uavdt_full_benchmark_temporal_dev \
-    --device 0 \
-    --batch_size 4 \
-    --workers 8 \
-    --epochs 50 \
-    --optimizer AdamW \
-    --no-amp \
-    --val
+    --device 0
 }
 
 eval_visdrone() {
