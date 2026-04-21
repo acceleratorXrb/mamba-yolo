@@ -138,7 +138,8 @@ prepare_visdrone() {
   "$PYTHON_BIN" "$ROOT/scripts/download_visdrone_vid.py" \
     --items train val toolkit \
     --output-dir "$ROOT/data/external/visdrone_vid" \
-    --extract
+    --extract \
+    --source auto
 
   "$PYTHON_BIN" "$ROOT/scripts/prepare_visdrone_vid.py" \
     --raw-root "$ROOT/data/external/visdrone_vid" \
