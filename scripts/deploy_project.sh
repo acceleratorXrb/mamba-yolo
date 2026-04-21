@@ -51,6 +51,10 @@ usage() {
 EOF
 }
 
+warn() {
+  echo "[WARN] $*" >&2
+}
+
 require_conda() {
   if ! command -v conda >/dev/null 2>&1; then
     echo "错误: 未找到 conda，请先安装 conda。" >&2
@@ -263,7 +267,10 @@ main() {
       ;;
     all)
       setup_env
-      prepare_uavdt
+      if ! prepare_uavdt; then
+        warn "UAVDT 自动准备失败，已跳过 UAVDT，继续准备 VisDrone-VID。"
+        warn "后续如需补齐 UAVDT，请单独执行: bash scripts/deploy_project.sh prepare-uavdt"
+      fi
       prepare_visdrone
       ;;
     ""|-h|--help|help)
