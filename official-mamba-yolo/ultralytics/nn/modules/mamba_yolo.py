@@ -276,33 +276,55 @@ class TemporalStateTransfer(nn.Module):
             nn.SiLU(),
         )
 
-    def _scan_memory(self, clip_feats: torch.Tensor) -> torch.Tensor:
+    def _scan_memory(self, clip_feats: torch.Tensor, temporal_valid: torch.Tensor | None = None) -> torch.Tensor:
         batch_size, time_dim, channels, height, width = clip_feats.shape
         projected = self.memory_proj(clip_feats.flatten(0, 1)).view(batch_size, time_dim, channels, height, width)
+        if temporal_valid is not None and temporal_valid.ndim == 2:
+            valid = temporal_valid.to(projected.dtype).view(batch_size, time_dim, 1, 1, 1)
+        else:
+            valid = None
 
         forward_states = []
         state = torch.zeros_like(projected[:, 0])
         for idx in range(time_dim):
             current = projected[:, idx]
+            if valid is not None:
+                current_valid = valid[:, idx]
+                current = current * current_valid
+            else:
+                current_valid = None
             gate = self.scan_gate(torch.cat([current, state], dim=1))
-            state = gate * current + (1.0 - gate) * state
+            updated = gate * current + (1.0 - gate) * state
+            state = updated if current_valid is None else current_valid * updated + (1.0 - current_valid) * state
             forward_states.append(state)
 
         backward_states = []
         state = torch.zeros_like(projected[:, 0])
         for idx in range(time_dim - 1, -1, -1):
             current = projected[:, idx]
+            if valid is not None:
+                current_valid = valid[:, idx]
+                current = current * current_valid
+            else:
+                current_valid = None
             gate = self.scan_gate(torch.cat([current, state], dim=1))
-            state = gate * current + (1.0 - gate) * state
+            updated = gate * current + (1.0 - gate) * state
+            state = updated if current_valid is None else current_valid * updated + (1.0 - current_valid) * state
             backward_states.append(state)
         backward_states.reverse()
 
         center_idx = time_dim // 2
         local_state = 0.5 * (forward_states[center_idx] + backward_states[center_idx])
-        global_state = projected.mean(dim=1)
+        if valid is not None:
+            valid_sum = valid.sum(dim=1).clamp_min(1.0)
+            global_state = (projected * valid).sum(dim=1) / valid_sum
+        else:
+            global_state = projected.mean(dim=1)
         return 0.5 * (local_state + global_state)
 
-    def forward(self, clip_feats: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, clip_feats: torch.Tensor, temporal_valid: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         if clip_feats.ndim != 5:
             raise ValueError("clip_feats must have shape [B, T, C, H, W].")
 
@@ -310,16 +332,23 @@ class TemporalStateTransfer(nn.Module):
         center_idx = time_dim // 2
         current = clip_feats[:, center_idx]
         if self.fusion_mode == "mean":
-            aggregated = clip_feats.mean(dim=1)
+            if temporal_valid is not None and temporal_valid.ndim == 2:
+                valid = temporal_valid.to(clip_feats.dtype).view(clip_feats.shape[0], time_dim, 1, 1, 1)
+                aggregated = (clip_feats * valid).sum(dim=1) / valid.sum(dim=1).clamp_min(1.0)
+            else:
+                aggregated = clip_feats.mean(dim=1)
         elif self.fusion_mode == "weighted":
             flat_feats = clip_feats.flatten(0, 1)
             logits = self.temporal_weight(flat_feats).view(
                 clip_feats.shape[0], time_dim, 1, clip_feats.shape[-2], clip_feats.shape[-1]
             )
+            if temporal_valid is not None and temporal_valid.ndim == 2:
+                valid = temporal_valid.to(logits.dtype).view(clip_feats.shape[0], time_dim, 1, 1, 1)
+                logits = logits.masked_fill(valid <= 0, torch.finfo(logits.dtype).min)
             weights = torch.softmax(logits, dim=1)
             aggregated = (clip_feats * weights).sum(dim=1)
         else:
-            aggregated = self._scan_memory(clip_feats)
+            aggregated = self._scan_memory(clip_feats, temporal_valid=temporal_valid)
         temporal_state = self.state_proj(aggregated)
         gate = self.gate(torch.cat([current, temporal_state], dim=1))
         fused = current + gate * temporal_state
@@ -332,13 +361,17 @@ class AdaptiveSparseGuide(nn.Module):
     def __init__(self, out_channels: int) -> None:
         super().__init__()
         self.proj = nn.Sequential(
-            nn.Conv2d(2, out_channels, kernel_size=1, bias=False),
+            nn.Conv2d(3, out_channels, kernel_size=1, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.Sigmoid(),
         )
 
     def forward(
-        self, clip_frames: torch.Tensor | None, center_feat: torch.Tensor, temporal_valid: torch.Tensor | None = None
+        self,
+        clip_frames: torch.Tensor | None,
+        center_feat: torch.Tensor,
+        temporal_valid: torch.Tensor | None = None,
+        prev_det_heatmap: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if clip_frames is not None and clip_frames.ndim == 5:
             center = clip_frames.shape[1] // 2
@@ -356,9 +389,19 @@ class AdaptiveSparseGuide(nn.Module):
             center = temporal_valid.shape[1] // 2
             valid_mask = temporal_valid[:, max(center - 1, 0)].to(center_feat.dtype).view(-1, 1, 1, 1)
             diff = diff * valid_mask
+        if prev_det_heatmap is None:
+            prev_det_heatmap = torch.zeros_like(diff)
+        elif prev_det_heatmap.shape[-2:] != center_feat.shape[-2:]:
+            prev_det_heatmap = torch.nn.functional.interpolate(
+                prev_det_heatmap, size=center_feat.shape[-2:], mode="bilinear", align_corners=False
+            )
+        if temporal_valid is not None and temporal_valid.ndim == 2:
+            center = temporal_valid.shape[1] // 2
+            valid_mask = temporal_valid[:, max(center - 1, 0)].to(center_feat.dtype).view(-1, 1, 1, 1)
+            prev_det_heatmap = prev_det_heatmap * valid_mask
         saliency = center_feat.detach().abs().mean(dim=1, keepdim=True)
         saliency = saliency / saliency.amax(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
-        return self.proj(torch.cat([diff, saliency], dim=1))
+        return self.proj(torch.cat([diff, saliency, prev_det_heatmap], dim=1))
 
 
 class SparseGuidedTemporalScan(nn.Module):
@@ -410,8 +453,78 @@ class TemporalGuidedXSSBlock(nn.Module):
         return self.block(x)
 
 
+class SpatialTemporalFusionBlock(nn.Module):
+    """Explicit spatial-main / temporal-side gated fusion block."""
+
+    def __init__(self, channels: int) -> None:
+        super().__init__()
+        self.spatial_proj = nn.Sequential(
+            nn.Conv2d(channels, channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.SiLU(),
+        )
+        self.temporal_proj = nn.Sequential(
+            nn.Conv2d(channels, channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.SiLU(),
+        )
+        self.fusion_gate = nn.Sequential(
+            nn.Conv2d(channels * 2, channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.SiLU(),
+            nn.Conv2d(channels, channels, kernel_size=1, bias=True),
+            nn.Sigmoid(),
+        )
+        self.output_proj = nn.Sequential(
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.SiLU(),
+        )
+
+    def forward(self, spatial_feat: torch.Tensor, temporal_feat: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        spatial_feat = self.spatial_proj(spatial_feat)
+        temporal_feat = self.temporal_proj(temporal_feat)
+        gate = self.fusion_gate(torch.cat([spatial_feat, temporal_feat], dim=1))
+        fused = spatial_feat + gate * temporal_feat
+        return self.output_proj(fused), gate
+
+
+class MultiScaleTemporalStateBlock(nn.Module):
+    """Top-down temporal state propagation across feature pyramid levels."""
+
+    def __init__(self, in_channels: int, out_channels: int) -> None:
+        super().__init__()
+        self.state_proj = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.SiLU(),
+        )
+        self.fusion_gate = nn.Sequential(
+            nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.SiLU(),
+            nn.Conv2d(out_channels, out_channels, kernel_size=1, bias=True),
+            nn.Sigmoid(),
+        )
+        self.out_proj = nn.Sequential(
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.SiLU(),
+        )
+
+    def forward(self, target_feat: torch.Tensor, propagated_state: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        propagated_state = self.state_proj(propagated_state)
+        if propagated_state.shape[-2:] != target_feat.shape[-2:]:
+            propagated_state = torch.nn.functional.interpolate(
+                propagated_state, size=target_feat.shape[-2:], mode="bilinear", align_corners=False
+            )
+        gate = self.fusion_gate(torch.cat([target_feat, propagated_state], dim=1))
+        fused = target_feat + gate * propagated_state
+        return self.out_proj(fused), gate
+
+
 class TemporalFusionScale(nn.Module):
-    """Three-frame temporal fusion scale with state transfer, sparse guide and temporal-guided XSS."""
+    """Three-frame temporal fusion scale with explicit spatial/temporal dual branches."""
 
     def __init__(
         self,
@@ -424,30 +537,41 @@ class TemporalFusionScale(nn.Module):
         self.state_transfer = TemporalStateTransfer(channels, fusion_mode=fusion_mode)
         self.enable_sparse_guide = enable_sparse_guide
         self.enable_temporal_block = enable_temporal_block
+        self.fusion_block = SpatialTemporalFusionBlock(channels)
         self.sparse_guide = AdaptiveSparseGuide(channels) if enable_sparse_guide else None
         self.sparse_scan = SparseGuidedTemporalScan(channels) if enable_sparse_guide else None
         self.temporal_block = TemporalGuidedXSSBlock(channels, channels, n=1) if enable_temporal_block else None
-        self.output_proj = nn.Sequential(
-            nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(channels),
-            nn.SiLU(),
-        )
 
     def forward(
         self,
         clip_feats: torch.Tensor,
         clip_frames: torch.Tensor | None = None,
         temporal_valid: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        fused, temporal_state = self.state_transfer(clip_feats)
+        prev_det_heatmap: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor | None]]:
+        center_idx = clip_feats.shape[1] // 2
+        center_feat = clip_feats[:, center_idx]
+        temporal_feat, temporal_state = self.state_transfer(clip_feats, temporal_valid=temporal_valid)
+        fused, fusion_gate = self.fusion_block(center_feat, temporal_feat)
+        guide = None
         if self.enable_sparse_guide and self.sparse_guide is not None and self.sparse_scan is not None:
-            guide = self.sparse_guide(clip_frames, fused, temporal_valid=temporal_valid)
+            guide = self.sparse_guide(
+                clip_frames, fused, temporal_valid=temporal_valid, prev_det_heatmap=prev_det_heatmap
+            )
             fused = self.sparse_scan(fused, guide)
         if self.enable_temporal_block and self.temporal_block is not None:
             fused = self.temporal_block(fused, temporal_state)
-        else:
-            fused = self.output_proj(fused)
-        return fused, temporal_state
+        aux = {
+            "center_feat": center_feat,
+            "spatial_feat": center_feat,
+            "temporal_feat": temporal_feat,
+            "temporal_state": temporal_state,
+            "fused_feat": fused,
+            "fusion_gate": fusion_gate,
+            "guide": guide,
+            "prev_det_heatmap": prev_det_heatmap,
+        }
+        return fused, temporal_state, aux
 
 
 class RGBlock(nn.Module):

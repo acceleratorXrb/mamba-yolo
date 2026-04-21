@@ -1,7 +1,7 @@
 epochs: 1
 batch: 2
 imgsz: 640
-workers: 2
+workers: 0
 optimizer: AdamW
 lr0: 0.0005
 lrf: 0.1
@@ -11,7 +11,8 @@ warmup_bias_lr: 0.02
 cos_lr: true
 amp: false
 val: true
-fraction: 0.1
+visdrone_vid_coco_metrics: true
+fraction: 0.0002
 temporal: true
 temporal_stride: 1
 temporal_clip_length: 3

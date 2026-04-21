@@ -246,14 +246,14 @@ class BaseValidator:
 
             # Inference
             with dt[1]:
-                if "temporal_imgs" in batch:
+                if self.args.temporal and "temporal_imgs" in batch:
                     preds = model(
                         batch["img"],
                         augment=augment,
                         temporal_imgs=batch["temporal_imgs"],
                         temporal_valid=batch.get("temporal_valid"),
                     )
-                elif "prev_img" in batch:
+                elif self.args.temporal and "prev_img" in batch:
                     preds = model(
                         batch["img"],
                         augment=augment,

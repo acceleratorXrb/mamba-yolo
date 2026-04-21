@@ -78,6 +78,7 @@ from .transformer import (
 
 from .mamba_yolo import (
     AdaptiveSparseGuide,
+    MultiScaleTemporalStateBlock,
     SimpleStem,
     SparseGuidedTemporalScan,
     TemporalFeatureFusion,
@@ -143,6 +144,7 @@ __all__ = (
     "TemporalFeatureFusion",
     "TemporalStateTransfer",
     "AdaptiveSparseGuide",
+    "MultiScaleTemporalStateBlock",
     "SparseGuidedTemporalScan",
     "TemporalGuidedXSSBlock",
     "TemporalFusionScale",

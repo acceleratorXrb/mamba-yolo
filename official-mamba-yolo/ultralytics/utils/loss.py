@@ -202,6 +202,50 @@ class v8DetectionLoss:
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self._logged_nonfinite_loss = False
         self._last_loss_debug = None
+        self.temporal_consistency = bool(getattr(h, "temporal_consistency", False))
+        self.temporal_consistency_weight = float(getattr(h, "temporal_consistency_weight", 0.0))
+        self.model_ref = model
+
+    def temporal_consistency_loss(self, batch):
+        """Regularize temporal state to stay close to the current feature on stable regions."""
+        if not self.temporal_consistency or self.temporal_consistency_weight <= 0.0:
+            return torch.zeros(1, device=self.device, dtype=torch.float32).squeeze(0)
+        temporal_aux = getattr(self.model_ref, "_last_temporal_aux", None)
+        temporal_valid = batch.get("temporal_valid")
+        if not temporal_aux or temporal_valid is None:
+            return torch.zeros(1, device=self.device, dtype=torch.float32).squeeze(0)
+
+        neighbor_valid = temporal_valid.sum(dim=1, keepdim=True).sub(1.0).clamp_(0.0, 2.0)
+        if neighbor_valid.max() <= 0:
+            return torch.zeros(1, device=self.device, dtype=torch.float32).squeeze(0)
+
+        total = torch.zeros(1, device=self.device, dtype=torch.float32).squeeze(0)
+        count = 0
+        for aux in temporal_aux:
+            center_feat = aux.get("center_feat")
+            temporal_state = aux.get("temporal_state")
+            guide = aux.get("guide")
+            if center_feat is None or temporal_state is None:
+                continue
+
+            center_norm = F.normalize(center_feat.float(), dim=1)
+            state_norm = F.normalize(temporal_state.float(), dim=1)
+            cosine_distance = 1.0 - (center_norm * state_norm).sum(dim=1, keepdim=True)
+
+            if guide is not None:
+                stable_mask = (1.0 - guide.detach().float().mean(dim=1, keepdim=True)).clamp_(0.0, 1.0)
+            else:
+                stable_mask = torch.ones_like(cosine_distance)
+
+            valid_mask = (neighbor_valid > 0).to(cosine_distance.dtype).view(-1, 1, 1, 1)
+            weight = stable_mask * valid_mask
+            denom = weight.sum().clamp_min(1.0)
+            total = total + (cosine_distance * weight).sum() / denom
+            count += 1
+
+        if count == 0:
+            return torch.zeros(1, device=self.device, dtype=torch.float32).squeeze(0)
+        return total / count
 
     def preprocess(self, targets, batch_size, scale_tensor):
         """Preprocesses the target counts and matches with the input batch size to output a tensor."""
@@ -231,7 +275,7 @@ class v8DetectionLoss:
 
     def __call__(self, preds, batch):
         """Calculate the sum of the loss for box, cls and dfl multiplied by batch size."""
-        loss = torch.zeros(3, device=self.device)  # box, cls, dfl
+        loss = torch.zeros(4, device=self.device)  # box, cls, dfl, temporal_consistency
         feats = preds[1] if isinstance(preds, tuple) else preds
         pred_distri, pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
             (self.reg_max * 4, self.nc), 1
@@ -283,11 +327,13 @@ class v8DetectionLoss:
         loss[0] *= self.hyp.box  # box gain
         loss[1] *= self.hyp.cls  # cls gain
         loss[2] *= self.hyp.dfl  # dfl gain
+        loss[3] = self.temporal_consistency_loss(batch) * self.temporal_consistency_weight
 
         self._last_loss_debug = {
             "loss_box_scaled": tensor_debug_summary(loss[0].view(1)),
             "loss_cls_scaled": tensor_debug_summary(loss[1].view(1)),
             "loss_dfl_scaled": tensor_debug_summary(loss[2].view(1)),
+            "loss_temporal_consistency_scaled": tensor_debug_summary(loss[3].view(1)),
             "target_scores_sum": float(target_scores_sum.detach().cpu()),
             "fg_mask_sum": int(fg_mask.sum().detach().cpu()),
             "mask_gt_sum": int(mask_gt.sum().detach().cpu()),
@@ -315,7 +361,7 @@ class v8DetectionLoss:
             self._last_loss_debug = debug
             LOGGER.warning(f"WARNING ⚠️ non-finite detection loss debug: {debug}")
 
-        return loss.sum() * batch_size, loss.detach()  # loss(box, cls, dfl)
+        return loss.sum() * batch_size, loss.detach()  # loss(box, cls, dfl, temporal_consistency)
 
 
 class v8SegmentationLoss(v8DetectionLoss):

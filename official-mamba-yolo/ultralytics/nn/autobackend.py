@@ -462,16 +462,16 @@ class AutoBackend(nn.Module):
 
         # PyTorch
         if self.pt or self.nn_module:
-            y = self.model(
-                im,
-                augment=augment,
-                visualize=visualize,
-                embed=embed,
-                prev_img=prev_img,
-                has_prev=has_prev,
-                temporal_imgs=temporal_imgs,
-                temporal_valid=temporal_valid,
-            )
+            forward_kwargs = {"augment": augment, "visualize": visualize, "embed": embed}
+            if prev_img is not None:
+                forward_kwargs["prev_img"] = prev_img
+            if has_prev is not None:
+                forward_kwargs["has_prev"] = has_prev
+            if temporal_imgs is not None:
+                forward_kwargs["temporal_imgs"] = temporal_imgs
+            if temporal_valid is not None:
+                forward_kwargs["temporal_valid"] = temporal_valid
+            y = self.model(im, **forward_kwargs)
 
         # TorchScript
         elif self.jit:

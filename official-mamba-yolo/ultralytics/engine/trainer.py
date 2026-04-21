@@ -294,7 +294,9 @@ class BaseTrainer:
                     mode="val",
                 )
                 self.validator = self.get_validator()
-                metric_keys = self.validator.metrics.keys + self.label_loss_items(prefix="val")
+                metric_keys = list(self.validator.metrics.keys)
+                metric_keys += list(getattr(self.validator, "extra_metric_keys", ()))
+                metric_keys += self.label_loss_items(prefix="val")
                 self.metrics = dict(zip(metric_keys, [0] * len(metric_keys)))
             else:
                 # Strict benchmark mode: do not touch validation/test data during training.

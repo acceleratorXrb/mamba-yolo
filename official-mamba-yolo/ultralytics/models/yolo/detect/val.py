@@ -1,10 +1,13 @@
 # Ultralytics YOLO 🚀, AGPL-3.0 license
 
 import os
+import json
 from pathlib import Path
 
 import numpy as np
 import torch
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 
 from ultralytics.data import build_dataloader, build_yolo_dataset, converter
 from ultralytics.engine.validator import BaseValidator
@@ -41,18 +44,27 @@ class DetectionValidator(BaseValidator):
         self.iouv = torch.linspace(0.5, 0.95, 10)  # IoU vector for mAP@0.5:0.95
         self.niou = self.iouv.numel()
         self.lb = []  # for autolabelling
+        self.extra_metric_keys = ()
+        self._visdrone_coco_enabled = False
+        self._visdrone_coco_image_ids = {}
+        self._visdrone_coco_images = []
+        self._visdrone_coco_annotations = []
+        self._visdrone_coco_predictions = []
+        self._visdrone_coco_ann_id = 1
+        self._visdrone_coco_results = None
+        self._visdrone_coco_per_class = []
 
     def preprocess(self, batch):
         """Preprocesses batch of images for YOLO training."""
         batch["img"] = batch["img"].to(self.device, non_blocking=True)
         batch["img"] = (batch["img"].half() if self.args.half else batch["img"].float()) / 255
-        if "temporal_imgs" in batch:
+        if self.args.temporal and "temporal_imgs" in batch:
             batch["temporal_imgs"] = batch["temporal_imgs"].to(self.device, non_blocking=True)
             batch["temporal_imgs"] = (
                 batch["temporal_imgs"].half() if self.args.half else batch["temporal_imgs"].float()
             ) / 255
             batch["temporal_valid"] = batch["temporal_valid"].to(self.device, non_blocking=True).float()
-        if "prev_img" in batch:
+        if self.args.temporal and "prev_img" in batch:
             batch["prev_img"] = batch["prev_img"].to(self.device, non_blocking=True)
             batch["prev_img"] = (batch["prev_img"].half() if self.args.half else batch["prev_img"].float()) / 255
             batch["has_prev"] = batch["has_prev"].to(self.device, non_blocking=True).float()
@@ -89,6 +101,21 @@ class DetectionValidator(BaseValidator):
         self.seen = 0
         self.jdict = []
         self.stats = dict(tp=[], conf=[], pred_cls=[], target_cls=[], target_img=[])
+        self._visdrone_coco_enabled = bool(getattr(self.args, "visdrone_vid_coco_metrics", False)) and (
+            "VisDroneVID" in str(getattr(self.args, "data", "")) or "VisDroneVID" in str(val)
+        )
+        if self._visdrone_coco_enabled:
+            self.extra_metric_keys = ("metrics/AP(B)", "metrics/AP50(B)", "metrics/AP75(B)")
+            self._visdrone_coco_image_ids = {}
+            self._visdrone_coco_images = []
+            self._visdrone_coco_annotations = []
+            self._visdrone_coco_predictions = []
+            self._visdrone_coco_ann_id = 1
+            self._visdrone_coco_results = None
+            self._visdrone_coco_per_class = []
+        else:
+            self.extra_metric_keys = ()
+            self._visdrone_coco_per_class = []
 
     def get_desc(self):
         """Return a formatted string summarizing class metrics of YOLO model."""
@@ -127,6 +154,88 @@ class DetectionValidator(BaseValidator):
         )  # native-space pred
         return predn
 
+    def _ensure_visdrone_coco_image(self, image_path, pbatch, cls, bbox):
+        """Register one validation image and its GT boxes for COCO-style VisDrone metrics."""
+        stem = Path(image_path).stem
+        image_id = self._visdrone_coco_image_ids.get(stem)
+        if image_id is not None:
+            return image_id
+
+        image_id = len(self._visdrone_coco_image_ids) + 1
+        self._visdrone_coco_image_ids[stem] = image_id
+        height, width = int(pbatch["ori_shape"][0]), int(pbatch["ori_shape"][1])
+        self._visdrone_coco_images.append(
+            {"id": image_id, "file_name": Path(image_path).name, "width": width, "height": height}
+        )
+        for gt_cls, gt_box in zip(cls.cpu().numpy(), bbox.cpu().numpy()):
+            x1, y1, x2, y2 = [float(v) for v in gt_box]
+            w = max(0.0, x2 - x1)
+            h = max(0.0, y2 - y1)
+            if w <= 0 or h <= 0:
+                continue
+            self._visdrone_coco_annotations.append(
+                {
+                    "id": self._visdrone_coco_ann_id,
+                    "image_id": image_id,
+                    "category_id": int(gt_cls) + 1,
+                    "bbox": [x1, y1, w, h],
+                    "area": w * h,
+                    "iscrowd": 0,
+                }
+            )
+            self._visdrone_coco_ann_id += 1
+        return image_id
+
+    def _compute_visdrone_coco_metrics(self):
+        """Compute COCO-style AP/AP50/AP75 for VisDrone-VID validation."""
+        categories = [{"id": i + 1, "name": self.names[i]} for i in range(self.nc)]
+        gt_payload = {
+            "images": self._visdrone_coco_images,
+            "annotations": self._visdrone_coco_annotations,
+            "categories": categories,
+        }
+        gt_path = self.save_dir / "visdrone_vid_val_gt_coco_tmp.json"
+        pred_path = self.save_dir / "visdrone_vid_val_predictions_tmp.json"
+        gt_path.write_text(json.dumps(gt_payload, ensure_ascii=False), encoding="utf-8")
+        pred_path.write_text(json.dumps(self._visdrone_coco_predictions, ensure_ascii=False), encoding="utf-8")
+
+        coco_gt = COCO(str(gt_path))
+        coco_dt = coco_gt.loadRes(str(pred_path)) if self._visdrone_coco_predictions else coco_gt.loadRes([])
+        coco_eval = COCOeval(coco_gt, coco_dt, "bbox")
+        coco_eval.params.imgIds = sorted(img["id"] for img in self._visdrone_coco_images)
+        coco_eval.evaluate()
+        coco_eval.accumulate()
+        coco_eval.summarize()
+        precision = coco_eval.eval["precision"]  # [TxRxKxAxM]
+        area_all_idx = 0
+        max_det_idx = 2
+        per_class = []
+        for class_idx in range(self.nc):
+            ap = precision[:, :, class_idx, area_all_idx, max_det_idx]
+            ap = ap[ap > -1]
+            ap50 = precision[0, :, class_idx, area_all_idx, max_det_idx]
+            ap50 = ap50[ap50 > -1]
+            ap75 = precision[5, :, class_idx, area_all_idx, max_det_idx]
+            ap75 = ap75[ap75 > -1]
+            per_class.append(
+                {
+                    "class_id": class_idx,
+                    "class_name": self.names[class_idx],
+                    "AP": float(ap.mean()) if ap.size else float("nan"),
+                    "AP50": float(ap50.mean()) if ap50.size else float("nan"),
+                    "AP75": float(ap75.mean()) if ap75.size else float("nan"),
+                }
+            )
+        self._visdrone_coco_results = {
+            "metrics/AP(B)": float(coco_eval.stats[0]),
+            "metrics/AP50(B)": float(coco_eval.stats[1]),
+            "metrics/AP75(B)": float(coco_eval.stats[2]),
+        }
+        self._visdrone_coco_per_class = per_class
+        per_class_path = self.save_dir / "visdrone_vid_val_per_class_metrics.json"
+        per_class_path.write_text(json.dumps(per_class, indent=2, ensure_ascii=False), encoding="utf-8")
+        return self._visdrone_coco_results
+
     def update_metrics(self, preds, batch):
         """Metrics."""
         for si, pred in enumerate(preds):
@@ -142,6 +251,9 @@ class DetectionValidator(BaseValidator):
             nl = len(cls)
             stat["target_cls"] = cls
             stat["target_img"] = cls.unique()
+            image_id = None
+            if self._visdrone_coco_enabled:
+                image_id = self._ensure_visdrone_coco_image(batch["im_file"][si], pbatch, cls, bbox)
             if npr == 0:
                 if nl:
                     for k in self.stats.keys():
@@ -156,6 +268,21 @@ class DetectionValidator(BaseValidator):
             predn = self._prepare_pred(pred, pbatch)
             stat["conf"] = predn[:, 4]
             stat["pred_cls"] = predn[:, 5]
+            if self._visdrone_coco_enabled and image_id is not None:
+                for det in predn.cpu().numpy():
+                    x1, y1, x2, y2, score, pred_cls = det.tolist()
+                    w = max(0.0, x2 - x1)
+                    h = max(0.0, y2 - y1)
+                    if w <= 0 or h <= 0:
+                        continue
+                    self._visdrone_coco_predictions.append(
+                        {
+                            "image_id": image_id,
+                            "category_id": int(pred_cls) + 1,
+                            "bbox": [x1, y1, w, h],
+                            "score": float(score),
+                        }
+                    )
 
             # Evaluate
             if nl:
@@ -185,12 +312,23 @@ class DetectionValidator(BaseValidator):
         stats.pop("target_img", None)
         if len(stats) and stats["tp"].any():
             self.metrics.process(**stats)
-        return self.metrics.results_dict
+        results = self.metrics.results_dict
+        if self._visdrone_coco_enabled:
+            results = {**results, **(self._visdrone_coco_results or self._compute_visdrone_coco_metrics())}
+        return results
 
     def print_results(self):
         """Prints training/validation set metrics per class."""
         pf = "%22s" + "%11i" * 2 + "%11.3g" * len(self.metrics.keys)  # print format
         LOGGER.info(pf % ("all", self.seen, self.nt_per_class.sum(), *self.metrics.mean_results()))
+        if self._visdrone_coco_enabled:
+            coco_metrics = self._visdrone_coco_results or self._compute_visdrone_coco_metrics()
+            LOGGER.info(
+                "VisDrone-VID COCO metrics: "
+                f"AP={coco_metrics['metrics/AP(B)']:.4f}, "
+                f"AP50={coco_metrics['metrics/AP50(B)']:.4f}, "
+                f"AP75={coco_metrics['metrics/AP75(B)']:.4f}"
+            )
         if self.nt_per_class.sum() == 0:
             LOGGER.warning(f"WARNING ⚠️ no labels found in {self.args.task} set, can not compute metrics without labels")
 
@@ -199,6 +337,32 @@ class DetectionValidator(BaseValidator):
             for i, c in enumerate(self.metrics.ap_class_index):
                 LOGGER.info(
                     pf % (self.names[c], self.nt_per_image[c], self.nt_per_class[c], *self.metrics.class_result(i))
+                )
+        if self._visdrone_coco_enabled and self.nc > 1 and len(self.stats):
+            det_by_class = {
+                int(c): self.metrics.class_result(i) for i, c in enumerate(self.metrics.ap_class_index)
+            }
+            LOGGER.info(
+                "%22s%11s%11s%11s%11s%11s%11s%11s%11s%11s"
+                % ("Class", "P", "R", "mAP50", "mAP95", "AP", "AP50", "AP75", "Images", "Instances")
+            )
+            for row in self._visdrone_coco_per_class:
+                class_id = int(row["class_id"])
+                p, r, map50, map95 = det_by_class.get(class_id, (float("nan"),) * 4)
+                LOGGER.info(
+                    "%22s%11.4f%11.4f%11.4f%11.4f%11.4f%11.4f%11.4f%11d%11d"
+                    % (
+                        row["class_name"],
+                        p,
+                        r,
+                        map50,
+                        map95,
+                        row["AP"],
+                        row["AP50"],
+                        row["AP75"],
+                        int(self.nt_per_image[class_id]) if self.nt_per_image is not None else 0,
+                        int(self.nt_per_class[class_id]) if self.nt_per_class is not None else 0,
+                    )
                 )
 
         if self.args.plots:

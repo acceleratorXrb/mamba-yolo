@@ -565,6 +565,8 @@ class RandomPerspective:
         labels.pop("ratio_pad", None)  # do not need ratio pad
 
         img = labels["img"]
+        temporal_imgs = labels.get("temporal_imgs")
+        prev_img = labels.get("prev_img")
         cls = labels["cls"]
         instances = labels.pop("instances")
         # Make sure the coord formats are right
@@ -576,6 +578,13 @@ class RandomPerspective:
         # M is affine matrix
         # Scale for func:`box_candidates`
         img, M, scale = self.affine_transform(img, border)
+        if temporal_imgs is not None:
+            transformed_temporal = []
+            for temporal_img in temporal_imgs:
+                transformed_temporal.append(self._apply_existing_transform(temporal_img, M))
+            labels["temporal_imgs"] = transformed_temporal
+        if prev_img is not None:
+            labels["prev_img"] = self._apply_existing_transform(prev_img, M)
 
         bboxes = self.apply_bboxes(instances.bboxes, M)
 
@@ -602,6 +611,14 @@ class RandomPerspective:
         labels["img"] = img
         labels["resized_shape"] = img.shape[:2]
         return labels
+
+    def _apply_existing_transform(self, img, M):
+        """Apply the already-sampled affine transform to an auxiliary frame."""
+        if (M != np.eye(3)).any():
+            if self.perspective:
+                return cv2.warpPerspective(img, M, dsize=self.size, borderValue=(114, 114, 114))
+            return cv2.warpAffine(img, M[:2], dsize=self.size, borderValue=(114, 114, 114))
+        return img
 
     def box_candidates(self, box1, box2, wh_thr=2, ar_thr=100, area_thr=0.1, eps=1e-16):
         """
@@ -655,17 +672,27 @@ class RandomHSV:
         img = labels["img"]
         if self.hgain or self.sgain or self.vgain:
             r = np.random.uniform(-1, 1, 3) * [self.hgain, self.sgain, self.vgain] + 1  # random gains
-            hue, sat, val = cv2.split(cv2.cvtColor(img, cv2.COLOR_BGR2HSV))
-            dtype = img.dtype  # uint8
-
             x = np.arange(0, 256, dtype=r.dtype)
-            lut_hue = ((x * r[0]) % 180).astype(dtype)
-            lut_sat = np.clip(x * r[1], 0, 255).astype(dtype)
-            lut_val = np.clip(x * r[2], 0, 255).astype(dtype)
-
-            im_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
-            cv2.cvtColor(im_hsv, cv2.COLOR_HSV2BGR, dst=img)  # no return needed
+            img = self._apply_hsv(img, x, r)
+            labels["img"] = img
+            if "temporal_imgs" in labels:
+                labels["temporal_imgs"] = [self._apply_hsv(frame, x, r) for frame in labels["temporal_imgs"]]
+            if "prev_img" in labels:
+                labels["prev_img"] = self._apply_hsv(labels["prev_img"], x, r)
         return labels
+
+    @staticmethod
+    def _apply_hsv(img, x, gains):
+        """Apply a shared HSV perturbation to one frame."""
+        hue, sat, val = cv2.split(cv2.cvtColor(img, cv2.COLOR_BGR2HSV))
+        dtype = img.dtype
+        lut_hue = ((x * gains[0]) % 180).astype(dtype)
+        lut_sat = np.clip(x * gains[1], 0, 255).astype(dtype)
+        lut_val = np.clip(x * gains[2], 0, 255).astype(dtype)
+        im_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
+        out = img.copy()
+        cv2.cvtColor(im_hsv, cv2.COLOR_HSV2BGR, dst=out)
+        return out
 
 
 class RandomFlip:
@@ -710,13 +737,23 @@ class RandomFlip:
         h = 1 if instances.normalized else h
         w = 1 if instances.normalized else w
 
+        flipped = random.random() < self.p
+
         # Flip up-down
-        if self.direction == "vertical" and random.random() < self.p:
+        if self.direction == "vertical" and flipped:
             img = np.flipud(img)
             instances.flipud(h)
-        if self.direction == "horizontal" and random.random() < self.p:
+            if "temporal_imgs" in labels:
+                labels["temporal_imgs"] = [np.ascontiguousarray(np.flipud(frame)) for frame in labels["temporal_imgs"]]
+            if "prev_img" in labels:
+                labels["prev_img"] = np.ascontiguousarray(np.flipud(labels["prev_img"]))
+        if self.direction == "horizontal" and flipped:
             img = np.fliplr(img)
             instances.fliplr(w)
+            if "temporal_imgs" in labels:
+                labels["temporal_imgs"] = [np.ascontiguousarray(np.fliplr(frame)) for frame in labels["temporal_imgs"]]
+            if "prev_img" in labels:
+                labels["prev_img"] = np.ascontiguousarray(np.fliplr(labels["prev_img"]))
             # For keypoints
             if self.flip_idx is not None and instances.keypoints is not None:
                 instances.keypoints = np.ascontiguousarray(instances.keypoints[:, self.flip_idx, :])
@@ -780,10 +817,21 @@ class LetterBox:
         if len(labels):
             labels = self._update_labels(labels, ratio, dw, dh)
             labels["img"] = img
+            if "temporal_imgs" in labels:
+                labels["temporal_imgs"] = [self._apply_to_image(frame, new_unpad, top, bottom, left, right) for frame in labels["temporal_imgs"]]
+            if "prev_img" in labels:
+                labels["prev_img"] = self._apply_to_image(labels["prev_img"], new_unpad, top, bottom, left, right)
             labels["resized_shape"] = new_shape
             return labels
         else:
             return img
+
+    @staticmethod
+    def _apply_to_image(img, new_unpad, top, bottom, left, right):
+        """Apply the already-computed letterbox resize and padding to an auxiliary frame."""
+        if img.shape[:2][::-1] != new_unpad:
+            img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
+        return cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114))
 
     def _update_labels(self, labels, ratio, padw, padh):
         """Update labels."""
@@ -1035,20 +1083,21 @@ class Format:
                     1 if self.mask_overlap else nl, img.shape[0] // self.mask_ratio, img.shape[1] // self.mask_ratio
                 )
             labels["masks"] = masks
-        labels["img"] = self._format_img(img)
+        bgr_flip = random.uniform(0, 1) > self.bgr
+        labels["img"] = self._format_img(img, bgr_flip=bgr_flip)
         if temporal_imgs is not None:
             formatted_temporal = []
             for temporal_img in temporal_imgs:
                 if temporal_img.shape[:2] != (h, w):
                     temporal_img = cv2.resize(temporal_img, (w, h), interpolation=cv2.INTER_LINEAR)
-                formatted_temporal.append(self._format_img(temporal_img))
+                formatted_temporal.append(self._format_img(temporal_img, bgr_flip=bgr_flip))
             labels["temporal_imgs"] = torch.stack(formatted_temporal, 0)
         if temporal_valid is not None:
             labels["temporal_valid"] = torch.as_tensor(temporal_valid, dtype=torch.float32)
         if prev_img is not None:
             if prev_img.shape[:2] != (h, w):
                 prev_img = cv2.resize(prev_img, (w, h), interpolation=cv2.INTER_LINEAR)
-            labels["prev_img"] = self._format_img(prev_img)
+            labels["prev_img"] = self._format_img(prev_img, bgr_flip=bgr_flip)
         if has_prev is not None:
             labels["has_prev"] = torch.tensor(float(has_prev), dtype=torch.float32)
         labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl)
@@ -1071,12 +1120,14 @@ class Format:
             labels["batch_idx"] = torch.zeros(nl)
         return labels
 
-    def _format_img(self, img):
+    def _format_img(self, img, bgr_flip=None):
         """Format the image for YOLO from Numpy array to PyTorch tensor."""
         if len(img.shape) < 3:
             img = np.expand_dims(img, -1)
         img = img.transpose(2, 0, 1)
-        img = np.ascontiguousarray(img[::-1] if random.uniform(0, 1) > self.bgr else img)
+        if bgr_flip is None:
+            bgr_flip = random.uniform(0, 1) > self.bgr
+        img = np.ascontiguousarray(img[::-1] if bgr_flip else img)
         img = torch.from_numpy(img)
         return img
 
@@ -1203,6 +1254,25 @@ def v8_transforms(dataset, imgsz, hyp, stretch=False):
             RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
         ]
     )  # transforms
+
+
+def temporal_v8_transforms(dataset, imgsz, hyp, stretch=False):
+    """Temporal-safe transforms that keep neighboring frames aligned with the center frame."""
+    return Compose(
+        [
+            RandomPerspective(
+                degrees=hyp.degrees,
+                translate=hyp.translate,
+                scale=hyp.scale,
+                shear=hyp.shear,
+                perspective=hyp.perspective,
+                pre_transform=None if stretch else LetterBox(new_shape=(imgsz, imgsz)),
+            ),
+            RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
+            RandomFlip(direction="vertical", p=hyp.flipud),
+            RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=dataset.data.get("flip_idx", [])),
+        ]
+    )
 
 
 # Classification augmentations -----------------------------------------------------------------------------------------

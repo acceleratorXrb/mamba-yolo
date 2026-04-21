@@ -38,6 +38,10 @@ multi_scale: False # (bool) Whether to use multiscale during training
 temporal: False # (bool) enable previous-frame temporal input path
 temporal_stride: 1 # (int) previous-frame distance used by temporal dataset
 temporal_clip_length: 3 # (int) odd clip length used by temporal dataset/model
+temporal_consistency: False # (bool) enable temporal feature consistency regularization during training
+temporal_consistency_weight: 0.05 # (float) weight for temporal consistency loss
+temporal_prev_det_prior: False # (bool) enable previous-frame detection prior heatmap in temporal fusion
+temporal_multiscale_state: True # (bool) enable top-down multi-scale temporal state propagation
 # Segmentation
 overlap_mask: True # (bool) masks should overlap during training (segment train only)
 mask_ratio: 4 # (int) mask downsample ratio (segment train only)
@@ -47,6 +51,7 @@ dropout: 0.0 # (float) use dropout regularization (classify train only)
 # Val/Test settings ----------------------------------------------------------------------------------------------------
 val: True # (bool) validate/test during training
 val_interval: 1 # (int) run validation every N epochs during training
+visdrone_vid_coco_metrics: False # (bool) compute COCO-style AP/AP50/AP75 during validation for VisDrone-VID
 split: val # (str) dataset split to use for validation, i.e. 'val', 'test' or 'train'
 save_json: False # (bool) save results to JSON file
 save_hybrid: False # (bool) save hybrid version of labels (labels + additional predictions)

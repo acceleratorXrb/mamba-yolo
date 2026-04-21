@@ -14,6 +14,8 @@ val: false
 temporal: true
 temporal_stride: 1
 temporal_clip_length: 3
+temporal_consistency: true
+temporal_consistency_weight: 0.05
 
 lr0: 0.001
 lrf: 0.1

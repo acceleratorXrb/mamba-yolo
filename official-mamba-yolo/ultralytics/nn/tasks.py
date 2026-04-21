@@ -42,6 +42,7 @@ from ultralytics.nn.modules import (
     HGBlock,
     HGStem,
     ImagePoolingAttn,
+    MultiScaleTemporalStateBlock,
     Pose,
     RepC3,
     RepConv,
@@ -56,7 +57,7 @@ from ultralytics.nn.modules import (
     VSSBlock,
     XSSBlock
 )
-from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, colorstr, emojis, yaml_load
+from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, colorstr, emojis, ops, yaml_load
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
 from ultralytics.utils.loss import v8ClassificationLoss, v8DetectionLoss, v8OBBLoss, v8PoseLoss, v8SegmentationLoss
 from ultralytics.utils.plotting import feature_visualization
@@ -470,8 +471,17 @@ class TemporalDetectionModel(DetectionModel):
         self.temporal_detect_from = list(detect.f)
         temporal_channels = [m[0].conv.in_channels for m in detect.cv2]
         self.temporal_fusion = nn.ModuleList(TemporalFusionScale(c, fusion_mode="scan") for c in temporal_channels)
+        self.temporal_multiscale_state = True
+        self.temporal_state_topdown = nn.ModuleList(
+            MultiScaleTemporalStateBlock(temporal_channels[idx], temporal_channels[idx - 1])
+            for idx in range(len(temporal_channels) - 1, 0, -1)
+        )
         self.temporal = True
         self.temporal_clip_length = 3
+        self.temporal_prior_topk = 20
+        self.temporal_prior_conf = 0.001
+        self.temporal_prev_det_prior = False
+        self._last_temporal_aux = None
 
     def loss(self, batch, preds=None):
         if not hasattr(self, "criterion"):
@@ -504,7 +514,11 @@ class TemporalDetectionModel(DetectionModel):
             temporal_imgs = torch.stack((prev_img, x, x), dim=1)
             if has_prev is not None:
                 temporal_valid = torch.stack(
-                    (has_prev.to(x.dtype), torch.ones_like(has_prev, dtype=x.dtype), torch.ones_like(has_prev, dtype=x.dtype)),
+                    (
+                        has_prev.to(x.dtype),
+                        torch.ones_like(has_prev, dtype=x.dtype),
+                        torch.zeros_like(has_prev, dtype=x.dtype),
+                    ),
                     dim=1,
                 )
         if temporal_imgs is None:
@@ -532,11 +546,64 @@ class TemporalDetectionModel(DetectionModel):
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
         return [y[i] for i in self.temporal_detect_from]
 
+    def _decode_frame_detections(self, frame_feats):
+        """Decode a previous-frame feature pyramid into simplified detection boxes for prior guidance."""
+        detect = self.model[-1]
+        detect_was_training = detect.training
+        with torch.no_grad():
+            detect.eval()
+            decoded = detect([feat.detach() for feat in frame_feats])
+            detect.train(detect_was_training)
+            if isinstance(decoded, (tuple, list)):
+                decoded = decoded[0]
+            return ops.non_max_suppression(
+                decoded,
+                conf_thres=self.temporal_prior_conf,
+                iou_thres=0.7,
+                multi_label=True,
+                agnostic=False,
+                max_det=self.temporal_prior_topk,
+            )
+
+    def _build_prev_det_heatmaps(self, detections, fused_scales, input_hw, temporal_valid=None):
+        """Rasterize previous-frame detections into per-scale heatmaps for the sparse guide."""
+        input_h, input_w = int(input_hw[0]), int(input_hw[1])
+        batch_size = len(detections)
+        heatmaps = []
+        valid_mask = None
+        if temporal_valid is not None and temporal_valid.ndim == 2:
+            prev_idx = max(temporal_valid.shape[1] // 2 - 1, 0)
+            valid_mask = temporal_valid[:, prev_idx].to(fused_scales[0].dtype).view(-1, 1, 1, 1)
+
+        for feat in fused_scales:
+            _, _, feat_h, feat_w = feat.shape
+            heatmap = feat.new_zeros((batch_size, 1, feat_h, feat_w))
+            for batch_idx, det in enumerate(detections):
+                if det is None or len(det) == 0:
+                    continue
+                for box in det[: self.temporal_prior_topk]:
+                    x1, y1, x2, y2, score, _ = box.tolist()
+                    x1 = max(0.0, min(feat_w, x1 / input_w * feat_w))
+                    x2 = max(0.0, min(feat_w, x2 / input_w * feat_w))
+                    y1 = max(0.0, min(feat_h, y1 / input_h * feat_h))
+                    y2 = max(0.0, min(feat_h, y2 / input_h * feat_h))
+                    left = min(int(np.floor(x1)), feat_w - 1)
+                    right = max(left + 1, min(int(np.ceil(x2)), feat_w))
+                    top = min(int(np.floor(y1)), feat_h - 1)
+                    bottom = max(top + 1, min(int(np.ceil(y2)), feat_h))
+                    region = heatmap[batch_idx, 0, top:bottom, left:right]
+                    region.copy_(torch.maximum(region, torch.full_like(region, float(score))))
+            if valid_mask is not None:
+                heatmap = heatmap * valid_mask
+            heatmaps.append(heatmap)
+        return heatmaps
+
     def _predict_temporal_clip(self, x, temporal_imgs, temporal_valid=None, profile=False, visualize=False):
         if temporal_imgs.ndim != 5:
             raise ValueError("temporal_imgs must have shape [B, T, C, H, W].")
         clip_length = temporal_imgs.shape[1]
         center_idx = clip_length // 2
+        use_prev_det_prior = bool(getattr(self.args, "temporal_prev_det_prior", self.temporal_prev_det_prior))
         current_feats = self._forward_to_detect(x, profile=profile, visualize=visualize)
         per_scale_feats = [[] for _ in range(len(self.temporal_fusion))]
         for frame_idx in range(clip_length):
@@ -548,14 +615,40 @@ class TemporalDetectionModel(DetectionModel):
                 per_scale_feats[scale_idx].append(feat)
 
         clip_feats = [torch.stack(scale_feats, dim=1) for scale_feats in per_scale_feats]
+        prev_det_heatmaps = [None] * len(self.temporal_fusion)
+        if use_prev_det_prior and center_idx > 0:
+            prev_frame_feats = [scale_feats[center_idx - 1] for scale_feats in per_scale_feats]
+            prev_frame_detections = self._decode_frame_detections(prev_frame_feats)
+            prev_det_heatmaps = self._build_prev_det_heatmaps(
+                prev_frame_detections,
+                current_feats,
+                input_hw=x.shape[-2:],
+                temporal_valid=temporal_valid,
+            )
         fused_feats = []
+        temporal_aux = []
+        temporal_states = []
         for scale_idx, fusion in enumerate(self.temporal_fusion):
-            fused, _ = fusion(
+            fused, temporal_state, aux = fusion(
                 clip_feats[scale_idx],
                 clip_frames=temporal_imgs,
                 temporal_valid=temporal_valid,
+                prev_det_heatmap=prev_det_heatmaps[scale_idx],
             )
             fused_feats.append(fused)
+            temporal_states.append(temporal_state)
+            temporal_aux.append(aux)
+
+        use_multiscale_state = bool(getattr(self.args, "temporal_multiscale_state", self.temporal_multiscale_state))
+        if use_multiscale_state and len(fused_feats) > 1:
+            propagated_state = temporal_states[-1]
+            for block_offset, source_idx in enumerate(range(len(fused_feats) - 2, -1, -1)):
+                block = self.temporal_state_topdown[block_offset]
+                fused_feats[source_idx], gate = block(fused_feats[source_idx], propagated_state)
+                temporal_aux[source_idx]["propagated_state"] = propagated_state
+                temporal_aux[source_idx]["multiscale_state_gate"] = gate
+                propagated_state = temporal_states[source_idx]
+        self._last_temporal_aux = temporal_aux
 
         detect = self.model[-1]
         module_input = fused_feats

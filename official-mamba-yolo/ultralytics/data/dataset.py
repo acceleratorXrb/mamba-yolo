@@ -23,6 +23,7 @@ from .augment import (
     Instances,
     LetterBox,
     RandomLoadText,
+    temporal_v8_transforms,
     classify_augmentations,
     classify_transforms,
     v8_transforms,
@@ -280,6 +281,27 @@ class YOLOTemporalDataset(YOLODataset):
             target_path = path.with_name(target_name)
             clip_files.append(str(target_path) if target_path.exists() else str(path))
         return clip_files
+
+    def build_transforms(self, hyp=None):
+        """Build transforms that preserve temporal frame alignment."""
+        if self.augment:
+            transforms = temporal_v8_transforms(self, self.imgsz, hyp)
+        else:
+            transforms = Compose([LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
+        transforms.append(
+            Format(
+                bbox_format="xywh",
+                normalize=True,
+                return_mask=self.use_segments,
+                return_keypoint=self.use_keypoints,
+                return_obb=self.use_obb,
+                batch_idx=True,
+                mask_ratio=hyp.mask_ratio,
+                mask_overlap=hyp.overlap_mask,
+                bgr=hyp.bgr if self.augment else 0.0,
+            )
+        )
+        return transforms
 
     def get_image_and_label(self, index):
         label = super().get_image_and_label(index)
