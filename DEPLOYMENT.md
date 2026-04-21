@@ -70,14 +70,24 @@ conda activate mambayolo
 
 作用：创建独立 Python 环境。
 
-## 6. 安装 PyTorch
+## 6. 按本机 nvcc 安装 PyTorch
 
 ```bash
 pip install -U pip wheel setuptools
-pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu121
+NVCC_RELEASE="$(nvcc -V | sed -n 's/.*release \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n1)"
+if [ "$NVCC_RELEASE" = "11.8" ]; then
+  TORCH_INDEX="cu118"
+elif [ "$NVCC_RELEASE" = "12.1" ]; then
+  TORCH_INDEX="cu121"
+else
+  echo "Unsupported nvcc release: $NVCC_RELEASE"
+  exit 1
+fi
+
+pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url "https://download.pytorch.org/whl/${TORCH_INDEX}"
 ```
 
-作用：安装当前项目验证过的 PyTorch/CUDA 组合。
+作用：根据本机 `nvcc` 版本自动安装匹配的 `PyTorch/CUDA` 组合，避免 `selective_scan` 编译时报 `CUDA version mismatches PyTorch`。
 
 ## 7. 安装通用依赖
 
@@ -101,7 +111,7 @@ nvcc -V
 
 ```bash
 cd "$REPO_ROOT/official-mamba-yolo/selective_scan"
-pip install .
+pip install --no-build-isolation .
 
 cd "$REPO_ROOT/official-mamba-yolo"
 pip install -v -e .

@@ -6,6 +6,28 @@ ENV_DIR="$ROOT/.conda/mambayolo"
 PYTHON_BIN="$ENV_DIR/bin/python"
 PIP_BIN="$ENV_DIR/bin/pip"
 
+detect_torch_index() {
+  if ! command -v nvcc >/dev/null 2>&1; then
+    echo "错误: 未找到 nvcc，无法判断 CUDA Toolkit 版本。" >&2
+    exit 1
+  fi
+
+  local nvcc_release
+  nvcc_release="$(nvcc -V | sed -n 's/.*release \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n1)"
+  case "$nvcc_release" in
+    11.8)
+      echo "cu118"
+      ;;
+    12.1)
+      echo "cu121"
+      ;;
+    *)
+      echo "错误: 当前仅支持 nvcc 11.8 或 12.1，检测到 $nvcc_release" >&2
+      exit 1
+      ;;
+  esac
+}
+
 usage() {
   cat <<EOF
 用法:
@@ -42,6 +64,8 @@ require_conda() {
 
 setup_env() {
   require_conda
+  local torch_index
+  torch_index="$(detect_torch_index)"
 
   if [[ ! -x "$PYTHON_BIN" ]]; then
     conda create -p "$ENV_DIR" python=3.11 -y
@@ -49,7 +73,7 @@ setup_env() {
   conda activate "$ENV_DIR"
 
   "$PIP_BIN" install -U pip wheel setuptools
-  "$PIP_BIN" install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu121
+  "$PIP_BIN" install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url "https://download.pytorch.org/whl/${torch_index}"
   "$PIP_BIN" install matplotlib opencv-python pillow pyyaml requests scipy tqdm psutil py-cpuinfo pandas seaborn ultralytics-thop
   "$PIP_BIN" install timm einops packaging ninja pytest pycocotools
 
@@ -59,7 +83,7 @@ setup_env() {
   fi
 
   cd "$ROOT/official-mamba-yolo/selective_scan"
-  "$PIP_BIN" install .
+  "$PIP_BIN" install --no-build-isolation .
 
   cd "$ROOT/official-mamba-yolo"
   "$PIP_BIN" install -v -e .
@@ -69,6 +93,7 @@ setup_env() {
 import torch
 import ultralytics
 print("torch:", torch.__version__)
+print("torch cuda:", torch.version.cuda)
 print("cuda available:", torch.cuda.is_available())
 print("cuda device count:", torch.cuda.device_count())
 print("ultralytics:", ultralytics.__version__)
