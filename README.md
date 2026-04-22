@@ -200,3 +200,79 @@ YOLOFT-S 训练前准备：
 ```bash
 bash scripts/deploy_project.sh prepare-yoloft
 ```
+
+### 常用超参作用说明
+
+下面这些超参在主工程 `Mamba-YOLO` 和 `YOLOFT` 中基本都存在，含义相近。
+
+- `epochs`
+  - 总训练轮数。越大训练越久，通常上限更高，但也更容易过拟合。
+- `batch`
+  - 每次迭代的样本数。越大通常吞吐更高，但更占显存。
+- `imgsz`
+  - 输入分辨率。越大通常对小目标更友好，但训练和推理都会更慢、更占显存。
+- `workers`
+  - dataloader 的并行加载进程数。太小可能喂不满 GPU，太大也可能引入额外开销。
+- `optimizer`
+  - 优化器类型。常见是 `AdamW` 或 `SGD/auto`，会影响收敛速度和稳定性。
+- `lr0`
+  - 初始学习率。过大容易震荡，过小会收敛太慢。
+- `lrf`
+  - 最终学习率系数，决定学习率从初始值衰减到什么水平。
+- `weight_decay`
+  - 权重衰减，控制正则化强度。过小容易过拟合，过大可能压制学习。
+- `warmup_epochs`
+  - 预热轮数。训练初期逐步升高学习率，减少前几轮不稳定。
+- `warmup_bias_lr`
+  - bias 参数的预热学习率，主要影响训练初期分类头和回归头的稳定性。
+- `amp`
+  - 自动混合精度。打开后通常更省显存、更快，但部分自定义算子可能不稳定。
+- `val`
+  - 是否在训练过程中做验证。
+- `val_interval`
+  - 每多少个 `epoch` 验证一次。越小越容易及时看到指标，但总训练时间更长。
+- `save_period`
+  - 每隔多少个 `epoch` 额外保存一次权重。
+- `fraction`
+  - 只使用数据集的某个比例。适合 smoke test，不适合正式实验。
+
+主工程时序版额外常见超参：
+
+- `temporal`
+  - 是否启用时序模型。`false` 时走官方原始单帧 `Mamba-YOLO`。
+- `temporal_stride`
+  - 邻帧采样步长。`1` 表示取相邻帧，值越大表示时间间隔越大。
+- `temporal_clip_length`
+  - 时序 clip 长度。当前主线一般用 `3` 帧。
+- `temporal_consistency`
+  - 是否启用时序一致性损失。
+- `temporal_consistency_weight`
+  - 时序一致性损失权重。过大可能压制检测主任务，过小可能不起作用。
+
+YOLOFT 数据与视频切分相关超参：
+
+- `split_length`
+  - 每个视频段切分长度。影响流式训练时单个子视频的长度。
+- `match_number`
+  - 邻近帧匹配/取样数量，影响时序关联强度。
+- `interval`
+  - 帧采样间隔。值越大表示跨得越远。
+- `rho`
+  - YOLOFT 数据流构造时的额外时序控制参数，影响样本组织方式。
+- `labels_dir`
+  - 标签目录名。
+- `images_dir`
+  - 图像目录名。
+- `names`
+  - 数据集类别名称列表。
+
+常见调参建议：
+
+- 想提速：
+  - 优先调 `batch`、`amp`、`val_interval`
+- 想提高小目标效果：
+  - 优先观察 `imgsz`、学习率和训练轮数
+- 想保证时序稳定：
+  - 优先观察 `temporal_clip_length`、`temporal_stride`、`temporal_consistency_weight`
+- 想做 smoke test：
+  - 用更小的 `epochs`、`batch`、`workers`，并把 `fraction` 设成小值
