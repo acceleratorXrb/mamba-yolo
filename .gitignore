@@ -34,6 +34,15 @@ official-mamba-yolo/.git/
 official-mamba-yolo/.git.bak/
 references/temporal_modules/*/.git/
 references/temporal_modules/*/.git.bak/
+third_party/*/.git/
+third_party/*/.git.bak/
+third_party/*/.vscode/
+third_party/*/.config/
+third_party/*/local_data/
+third_party/*/*.cache
+third_party/*/**/__pycache__/
+third_party/FGFA/
+third_party/YOLOv7_VisDrone/
 
 nonfinite_forward_*.json
 official-mamba-yolo/nonfinite_forward_*.json

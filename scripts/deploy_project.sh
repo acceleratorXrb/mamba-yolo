@@ -37,10 +37,12 @@ usage() {
   setup-env                  创建本地环境并安装依赖
   prepare-uavdt              下载并处理 full UAVDT
   prepare-visdrone           下载并处理 VisDrone-VID
+  prepare-yoloft             准备 YOLOFT-S 本地对照数据与依赖
   prepare-data               同时处理 UAVDT 和 VisDrone-VID
   train-visdrone-singleframe 启动 VisDrone-VID 官方原始单帧 baseline
   train-visdrone-temporal    启动 VisDrone-VID 时序开发训练
   train-uavdt-temporal       启动 full UAVDT 时序开发训练
+  train-yoloft-s             启动 YOLOFT-S 的本地 VisDrone-VID 对照训练
   eval-visdrone              评测 VisDrone-VID 当前 best.pt
   export-uavdt-det           导出 full UAVDT 官方 DET 格式结果
   all                        执行 setup-env + prepare-data
@@ -162,6 +164,13 @@ prepare_visdrone() {
     --yaml-path "$ROOT/official-mamba-yolo/ultralytics/cfg/datasets/VisDroneVID.yaml"
 }
 
+prepare_yoloft() {
+  cd "$ROOT"
+  "$PIP_BIN" install 'setuptools<81'
+  "$PIP_BIN" install -r "$ROOT/third_party/YOLOFT/requirements.txt"
+  "$PYTHON_BIN" "$ROOT/third_party/YOLOFT/tools/prepare_visdronevid_local.py"
+}
+
 train_visdrone_singleframe() {
   cd "$ROOT"
   exec "$PYTHON_BIN" official-mamba-yolo/mbyolo_train.py \
@@ -196,6 +205,12 @@ train_uavdt_temporal() {
     --project output_dir/uavdt_full_benchmark \
     --name mambayolo_uavdt_full_benchmark_temporal_dev \
     --device 0
+}
+
+train_yoloft_s() {
+  cd "$ROOT"
+  exec env PYTHON_BIN="$PYTHON_BIN" DEVICE=0 PRETRAIN_MODEL=yolov8s.pt \
+    bash "$ROOT/third_party/YOLOFT/scripts/run_yoloft_s_visdrone_local.sh"
 }
 
 eval_visdrone() {
@@ -238,6 +253,10 @@ main() {
       setup_env
       prepare_visdrone
       ;;
+    prepare-yoloft)
+      setup_env
+      prepare_yoloft
+      ;;
     prepare-data)
       setup_env
       prepare_uavdt
@@ -251,6 +270,9 @@ main() {
       ;;
     train-uavdt-temporal)
       train_uavdt_temporal
+      ;;
+    train-yoloft-s)
+      train_yoloft_s
       ;;
     eval-visdrone)
       eval_visdrone

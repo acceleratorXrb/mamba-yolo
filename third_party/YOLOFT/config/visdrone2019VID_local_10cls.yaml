@@ -1,0 +1,24 @@
+# Auto-generated local VisDrone-VID adapter for YOLOFT
+datasetname: MOVEHomoDETDataset_stream
+path: /home/easyai/桌面/mamba-yolo3/third_party/YOLOFT/local_data/visdrone2019VID_10cls
+train: train.txt
+val: test.txt
+test: test.txt
+labels_dir: yolo/
+images_dir: images/
+val_reimgsz: True
+split_length: [8, 50]
+match_number: 1
+interval: 1
+save_json: False
+names:
+  0: pedestrian
+  1: person
+  2: bicycle
+  3: car
+  4: van
+  5: truck
+  6: tricycle
+  7: awning-tricycle
+  8: bus
+  9: motor
