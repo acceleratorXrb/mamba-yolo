@@ -65,6 +65,14 @@ status_line() {
   printf '[STATUS] %-22s %-8s %s\n' "$label" "$status" "$detail"
 }
 
+latest_main_visdrone_best() {
+  find "$ROOT/output_dir/visdrone_vid" -path '*/weights/best.pt' -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n1 | awk '{print $2}'
+}
+
+latest_yoloft_best() {
+  find "$ROOT/third_party/YOLOFT/runs/detect" -path '*/weights/best.pt' -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n1 | awk '{print $2}'
+}
+
 require_conda() {
   if ! command -v conda >/dev/null 2>&1; then
     echo "错误: 未找到 conda，请先安装 conda。" >&2
@@ -229,7 +237,7 @@ postflight_summary() {
 
 train_visdrone_singleframe() {
   cd "$ROOT"
-  exec "$PYTHON_BIN" official-mamba-yolo/mbyolo_train.py \
+  "$PYTHON_BIN" official-mamba-yolo/mbyolo_train.py \
     --task train \
     --config ultralytics/cfg/models/mamba-yolo/Mamba-YOLO-T.yaml \
     --data ultralytics/cfg/datasets/VisDroneVID.yaml \
@@ -237,11 +245,14 @@ train_visdrone_singleframe() {
     --project output_dir/visdrone_vid \
     --name mambayolo_visdrone_vid_singleframe_baseline \
     --device 0
+  local best_path
+  best_path="$(latest_main_visdrone_best)"
+  post_eval_main_visdrone "$best_path"
 }
 
 train_visdrone_temporal() {
   cd "$ROOT"
-  exec "$PYTHON_BIN" official-mamba-yolo/mbyolo_train.py \
+  "$PYTHON_BIN" official-mamba-yolo/mbyolo_train.py \
     --task train \
     --config ultralytics/cfg/models/mamba-yolo/Mamba-YOLO-T.yaml \
     --data ultralytics/cfg/datasets/VisDroneVID.yaml \
@@ -249,6 +260,9 @@ train_visdrone_temporal() {
     --project output_dir/visdrone_vid \
     --name mambayolo_visdrone_vid_temporal_dev \
     --device 0
+  local best_path
+  best_path="$(latest_main_visdrone_best)"
+  post_eval_main_visdrone "$best_path"
 }
 
 train_uavdt_temporal() {
@@ -265,24 +279,33 @@ train_uavdt_temporal() {
 
 train_yoloft_s() {
   cd "$ROOT"
-  exec env PYTHON_BIN="$PYTHON_BIN" DEVICE=0 PRETRAIN_MODEL=yolov8s.pt \
+  env PYTHON_BIN="$PYTHON_BIN" DEVICE=0 PRETRAIN_MODEL=yolov8s.pt \
     bash "$ROOT/third_party/YOLOFT/scripts/run_yoloft_s_visdrone_local.sh"
+  local best_path
+  best_path="$(latest_yoloft_best)"
+  post_eval_yoloft_visdrone "$best_path"
 }
 
 eval_visdrone() {
   cd "$ROOT"
+  local weights_path="${1:-$(latest_main_visdrone_best)}"
+  local run_name
+  run_name="$(basename "$(dirname "$(dirname "$weights_path")")")"
   exec "$PYTHON_BIN" scripts/evaluate_visdrone_vid.py \
-    --weights "$ROOT/output_dir/visdrone_vid/mambayolo_visdrone_vid_temporal_dev/weights/best.pt" \
+    --weights "$weights_path" \
     --data "$ROOT/official-mamba-yolo/ultralytics/cfg/datasets/VisDroneVID.yaml" \
     --split val \
     --device 0 \
     --imgsz 640 \
     --batch 6 \
-    --output-dir "$ROOT/output_dir/visdrone_vid_eval/temporal_dev"
+    --output-dir "$ROOT/output_dir/visdrone_vid_eval/$run_name"
 }
 
 eval_visdrone_official() {
   cd "$ROOT"
+  local weights_path="${1:-$(latest_main_visdrone_best)}"
+  local run_name
+  run_name="$(basename "$(dirname "$(dirname "$weights_path")")")"
   local extra_args=()
   if command -v octave >/dev/null 2>&1 || command -v matlab >/dev/null 2>&1; then
     extra_args+=(--run-toolkit)
@@ -291,15 +314,91 @@ eval_visdrone_official() {
   fi
 
   exec "$PYTHON_BIN" scripts/evaluate_visdrone_vid_official.py \
-    --weights "$ROOT/output_dir/visdrone_vid/mambayolo_visdrone_vid_temporal_dev/weights/best.pt" \
+    --weights "$weights_path" \
     --data "$ROOT/official-mamba-yolo/ultralytics/cfg/datasets/VisDroneVID.yaml" \
     --split test \
     --device 0 \
     --imgsz 640 \
     --batch 6 \
     --raw-root "$ROOT/data/external/visdrone_vid" \
-    --output-dir "$ROOT/output_dir/visdrone_vid_official/temporal_dev" \
+    --output-dir "$ROOT/output_dir/visdrone_vid_official/$run_name" \
     "${extra_args[@]}"
+}
+
+post_eval_main_visdrone() {
+  local weights_path="${1:-}"
+  if [[ -z "$weights_path" || ! -f "$weights_path" ]]; then
+    status_line "VisDrone本地评测" "SKIP" "未找到本次训练生成的 best.pt"
+    status_line "VisDrone官方评测" "SKIP" "未找到本次训练生成的 best.pt"
+    return 0
+  fi
+
+  echo
+  echo "=== 训练后自动评测 ==="
+  status_line "VisDrone权重" "INFO" "$weights_path"
+  if "$PYTHON_BIN" "$ROOT/scripts/evaluate_visdrone_vid.py" \
+    --weights "$weights_path" \
+    --data "$ROOT/official-mamba-yolo/ultralytics/cfg/datasets/VisDroneVID.yaml" \
+    --split val \
+    --device 0 \
+    --imgsz 640 \
+    --batch 6 \
+    --output-dir "$ROOT/output_dir/visdrone_vid_eval/$(basename "$(dirname "$(dirname "$weights_path")")")"; then
+    status_line "VisDrone本地评测" "OK" "已完成"
+  else
+    status_line "VisDrone本地评测" "FAIL" "请检查上面的错误输出"
+  fi
+
+  local official_args=()
+  if command -v octave >/dev/null 2>&1 || command -v matlab >/dev/null 2>&1; then
+    official_args+=(--run-toolkit)
+  fi
+  if "$PYTHON_BIN" "$ROOT/scripts/evaluate_visdrone_vid_official.py" \
+    --weights "$weights_path" \
+    --data "$ROOT/official-mamba-yolo/ultralytics/cfg/datasets/VisDroneVID.yaml" \
+    --split test \
+    --device 0 \
+    --imgsz 640 \
+    --batch 6 \
+    --raw-root "$ROOT/data/external/visdrone_vid" \
+    --output-dir "$ROOT/output_dir/visdrone_vid_official/$(basename "$(dirname "$(dirname "$weights_path")")")" \
+    "${official_args[@]}"; then
+    if [[ ${#official_args[@]} -gt 0 ]]; then
+      status_line "VisDrone官方评测" "OK" "已导出并调用官方 toolkit"
+    else
+      status_line "VisDrone官方评测" "OK" "已导出官方格式结果；未检测到 octave/matlab，跳过 toolkit"
+    fi
+  else
+    status_line "VisDrone官方评测" "FAIL" "请检查上面的错误输出"
+  fi
+}
+
+post_eval_yoloft_visdrone() {
+  local weights_path="${1:-}"
+  if [[ -z "$weights_path" || ! -f "$weights_path" ]]; then
+    status_line "YOLOFT本地评测" "SKIP" "未找到本次训练生成的 best.pt"
+    status_line "YOLOFT官方评测" "SKIP" "未找到本次训练生成的 best.pt"
+    return 0
+  fi
+
+  echo
+  echo "=== YOLOFT 训练后自动评测 ==="
+  status_line "YOLOFT权重" "INFO" "$weights_path"
+  if (
+    cd "$ROOT/third_party/YOLOFT" && \
+    "$PYTHON_BIN" - <<PY
+from ultralytics.models import YOLOFT
+model = YOLOFT(r"$weights_path")
+model.val(data=r"$ROOT/third_party/YOLOFT/config/visdrone2019VID_local_10cls.yaml",
+          cfg=r"$ROOT/third_party/YOLOFT/config/train/orige_stream_visdrone_local.yaml",
+          device=[0])
+PY
+  ); then
+    status_line "YOLOFT本地评测" "OK" "已完成"
+  else
+    status_line "YOLOFT本地评测" "FAIL" "请检查上面的错误输出"
+  fi
+  status_line "YOLOFT官方评测" "SKIP" "当前仓库尚未接入 YOLOFT -> VisDrone 官方 toolkit 导出链"
 }
 
 export_uavdt_det() {

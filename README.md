@@ -14,3 +14,189 @@
 * 成果价值 
 
 学术上，首次将Mamba架构系统性地应用于无人机视频目标检测领域，探索了状态空间模型处理视觉时序信号的潜力，为“CNN+SSM”这一新兴架构范式提供了重要的实证案例与性能基准。其提出的自适应扫描与多尺度状态传递机制，可为视频理解、长序列分析等研究方向提供新思路。工程上，直接针对无人机巡检、安防监控、智慧交通等现实场景中“小、快、密”目标检测的痛点，提供精度更高、时序更稳的解决方案。所开发的模型与优化策略，能有效提升现有无人机视觉系统的自动化水平，具有明确的产业转化前景。生态上，开源高质量的代码、训练配置与模型权重，能推动无人机视觉与高效架构研究社区的发展，促进相关技术的快速迭代与落地。
+
+## 当前训练命令与超参位置
+
+### 一次性准备环境与数据
+
+```bash
+bash scripts/deploy_project.sh all
+```
+
+作用：
+- 创建项目内环境 `.conda/mambayolo`
+- 安装主工程依赖
+- 编译 `selective_scan`
+- 准备 `VisDrone-VID`
+- 准备 `YOLOFT-S` 本地适配数据
+- 尝试准备 `UAVDT`
+
+### 1. VisDrone-VID 时序版 Mamba-YOLO
+
+训练命令：
+
+```bash
+bash scripts/deploy_project.sh train-visdrone-temporal
+```
+
+超参修改位置：
+
+```bash
+configs/train/visdrone_vid_temporal_dev.yaml
+```
+
+主要可改项：
+- `epochs`
+- `batch`
+- `imgsz`
+- `workers`
+- `optimizer`
+- `lr0`
+- `lrf`
+- `weight_decay`
+- `warmup_epochs`
+- `amp`
+- `val`
+- `val_interval`
+- `temporal`
+- `temporal_stride`
+- `temporal_clip_length`
+- `temporal_consistency`
+- `temporal_consistency_weight`
+
+### 2. VisDrone-VID 单帧版官方原始 Mamba-YOLO
+
+训练命令：
+
+```bash
+bash scripts/deploy_project.sh train-visdrone-singleframe
+```
+
+超参修改位置：
+
+```bash
+configs/train/visdrone_vid_singleframe_dev.yaml
+```
+
+主要可改项：
+- `epochs`
+- `batch`
+- `imgsz`
+- `workers`
+- `optimizer`
+- `lr0`
+- `lrf`
+- `weight_decay`
+- `warmup_epochs`
+- `amp`
+- `val`
+- `val_interval`
+- 各类增强参数
+
+### 3. UAVDT 时序版 Mamba-YOLO
+
+训练命令：
+
+```bash
+bash scripts/deploy_project.sh train-uavdt-temporal
+```
+
+超参修改位置：
+
+```bash
+configs/train/uavdt_full_benchmark_temporal_dev_img640_adamw.yaml
+```
+
+主要可改项：
+- `epochs`
+- `batch`
+- `imgsz`
+- `workers`
+- `optimizer`
+- `lr0`
+- `lrf`
+- `weight_decay`
+- `warmup_epochs`
+- `amp`
+- `val`
+- `val_interval`
+- `temporal`
+- `temporal_stride`
+- `temporal_clip_length`
+- `temporal_consistency`
+- `temporal_consistency_weight`
+
+### 4. YOLOFT-S 对照模型（VisDrone-VID）
+
+训练命令：
+
+```bash
+bash scripts/deploy_project.sh train-yoloft-s
+```
+
+训练超参修改位置：
+
+```bash
+third_party/YOLOFT/config/train/orige_stream_visdrone_local.yaml
+```
+
+这里控制：
+- `epochs`
+- `batch`
+- `imgsz`
+- `workers`
+- `optimizer`
+- `lr0`
+- `lrf`
+- `weight_decay`
+- `warmup_epochs`
+- `amp`
+- `val`
+- `val_interval`
+- `save_period`
+- 各类增强参数
+
+数据与视频切分相关参数位置：
+
+```bash
+third_party/YOLOFT/config/visdrone2019VID_local_10cls.yaml
+```
+
+这里控制：
+- `path`
+- `train`
+- `val`
+- `test`
+- `labels_dir`
+- `images_dir`
+- `split_length`
+- `match_number`
+- `interval`
+- `rho`
+- `names`
+
+模型结构位置：
+
+```bash
+third_party/YOLOFT/config/yoloft/yoloft-S.yaml
+```
+
+### 评测命令
+
+主工程 VisDrone-VID 本地评测：
+
+```bash
+bash scripts/deploy_project.sh eval-visdrone
+```
+
+主工程 VisDrone-VID 官方格式导出 / 官方 toolkit 评测：
+
+```bash
+bash scripts/deploy_project.sh eval-visdrone-official
+```
+
+YOLOFT-S 训练前准备：
+
+```bash
+bash scripts/deploy_project.sh prepare-yoloft
+```
