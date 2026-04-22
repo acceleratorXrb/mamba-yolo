@@ -468,6 +468,9 @@ class TemporalDetectionModel(DetectionModel):
         detect = self.model[-1]
         if not isinstance(detect, Detect):
             raise TypeError("TemporalDetectionModel requires a Detect head.")
+        # Reuse the official backbone/neck exactly as they are, and inject the
+        # temporal branch only right before the Detect head. This preserves a
+        # clean single-frame baseline while keeping the temporal path modular.
         self.temporal_detect_from = list(detect.f)
         temporal_channels = [m[0].conv.in_channels for m in detect.cv2]
         self.temporal_fusion = nn.ModuleList(TemporalFusionScale(c, fusion_mode="scan") for c in temporal_channels)
@@ -511,6 +514,8 @@ class TemporalDetectionModel(DetectionModel):
         if augment:
             return super().predict(x, profile=profile, visualize=visualize, augment=augment, embed=embed)
         if temporal_imgs is None and prev_img is not None:
+            # Legacy compatibility path: convert previous-image input into the
+            # new clip format. Only the true previous frame is marked valid.
             temporal_imgs = torch.stack((prev_img, x, x), dim=1)
             if has_prev is not None:
                 temporal_valid = torch.stack(
@@ -531,6 +536,9 @@ class TemporalDetectionModel(DetectionModel):
         return y[f] if isinstance(f, int) else [x if j == -1 else y[j] for j in f]
 
     def _forward_to_detect(self, x, profile=False, visualize=False):
+        # Forward only to the layers that feed Detect. The temporal model calls
+        # this multiple times, once per frame in the clip, then fuses the
+        # resulting per-scale features before the final head.
         y, dt = [], []
         for m in self.model[:-1]:
             if m.f != -1:
@@ -604,6 +612,7 @@ class TemporalDetectionModel(DetectionModel):
         clip_length = temporal_imgs.shape[1]
         center_idx = clip_length // 2
         use_prev_det_prior = bool(getattr(self.args, "temporal_prev_det_prior", self.temporal_prev_det_prior))
+        # 1) Extract official Mamba-YOLO detection features for each frame.
         current_feats = self._forward_to_detect(x, profile=profile, visualize=visualize)
         per_scale_feats = [[] for _ in range(len(self.temporal_fusion))]
         for frame_idx in range(clip_length):
@@ -617,6 +626,10 @@ class TemporalDetectionModel(DetectionModel):
         clip_feats = [torch.stack(scale_feats, dim=1) for scale_feats in per_scale_feats]
         prev_det_heatmaps = [None] * len(self.temporal_fusion)
         if use_prev_det_prior and center_idx > 0:
+            # Optional prior branch: decode previous-frame detections and feed
+            # them back as sparse priors. This branch remains switchable because
+            # it improves interpretability but adds latency and noisy early-stage
+            # supervision.
             prev_frame_feats = [scale_feats[center_idx - 1] for scale_feats in per_scale_feats]
             prev_frame_detections = self._decode_frame_detections(prev_frame_feats)
             prev_det_heatmaps = self._build_prev_det_heatmaps(
@@ -629,6 +642,7 @@ class TemporalDetectionModel(DetectionModel):
         temporal_aux = []
         temporal_states = []
         for scale_idx, fusion in enumerate(self.temporal_fusion):
+            # 2) Run per-scale dual-branch temporal fusion.
             fused, temporal_state, aux = fusion(
                 clip_feats[scale_idx],
                 clip_frames=temporal_imgs,
@@ -641,6 +655,7 @@ class TemporalDetectionModel(DetectionModel):
 
         use_multiscale_state = bool(getattr(self.args, "temporal_multiscale_state", self.temporal_multiscale_state))
         if use_multiscale_state and len(fused_feats) > 1:
+            # 3) Top-down temporal state propagation across pyramid scales.
             propagated_state = temporal_states[-1]
             for block_offset, source_idx in enumerate(range(len(fused_feats) - 2, -1, -1)):
                 block = self.temporal_state_topdown[block_offset]
@@ -651,6 +666,9 @@ class TemporalDetectionModel(DetectionModel):
         self._last_temporal_aux = temporal_aux
 
         detect = self.model[-1]
+        # 4) Reuse the official Detect head unchanged on top of the fused
+        # multi-scale features. This keeps the temporal enhancement isolated to
+        # the feature pipeline rather than rewriting the prediction head.
         module_input = fused_feats
         outputs = detect(fused_feats)
         if _contains_nonfinite(outputs):

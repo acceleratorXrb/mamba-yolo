@@ -265,6 +265,9 @@ class YOLOTemporalDataset(YOLODataset):
         self.temporal_im_files = [self._resolve_temporal_im_files(im_file) for im_file in self.im_files]
 
     def _resolve_temporal_im_files(self, im_file: str) -> list[str]:
+        # The temporal loader relies on the canonical *_imgXXXXXX naming rule.
+        # If a file cannot be parsed as a sequential video frame, we fall back
+        # to repeating the current image so the rest of the pipeline still runs.
         path = Path(im_file)
         match = self.frame_pattern.match(path.name)
         if match is None:
@@ -285,6 +288,8 @@ class YOLOTemporalDataset(YOLODataset):
     def build_transforms(self, hyp=None):
         """Build transforms that preserve temporal frame alignment."""
         if self.augment:
+            # Temporal clips must share exactly the same geometric/color
+            # augmentation; otherwise neighboring frames stop being aligned.
             transforms = temporal_v8_transforms(self, self.imgsz, hyp)
         else:
             transforms = Compose([LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
@@ -312,6 +317,10 @@ class YOLOTemporalDataset(YOLODataset):
         center_idx = self.temporal_clip_length // 2
         for clip_idx, clip_im_file in enumerate(clip_im_files):
             if clip_im_file == current_im_file:
+                # The center frame is always valid. A neighbor may also resolve
+                # to the current frame when the real adjacent frame is missing;
+                # in that case we mark it invalid so temporal fusion can ignore
+                # the placeholder instead of treating it as a real observation.
                 temporal_imgs.append(label["img"].copy())
                 temporal_valid.append(1.0 if clip_idx == center_idx else 0.0)
                 continue
@@ -331,6 +340,8 @@ class YOLOTemporalDataset(YOLODataset):
 
     @staticmethod
     def collate_fn(batch):
+        # temporal_imgs has shape [B, T, C, H, W] after formatting. We stack it
+        # as a first-class batch field so the model can consume the whole clip.
         new_batch = {}
         keys = batch[0].keys()
         values = list(zip(*[list(b.values()) for b in batch]))

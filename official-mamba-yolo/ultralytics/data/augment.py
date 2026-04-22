@@ -1258,6 +1258,9 @@ def v8_transforms(dataset, imgsz, hyp, stretch=False):
 
 def temporal_v8_transforms(dataset, imgsz, hyp, stretch=False):
     """Temporal-safe transforms that keep neighboring frames aligned with the center frame."""
+    # Intentionally exclude Mosaic/MixUp/Albumentations here. Those transforms
+    # are useful for single-image detection but they break cross-frame spatial
+    # correspondence, which is fatal for temporal fusion.
     return Compose(
         [
             RandomPerspective(

@@ -188,6 +188,10 @@ class DetectionValidator(BaseValidator):
 
     def _compute_visdrone_coco_metrics(self):
         """Compute COCO-style AP/AP50/AP75 for VisDrone-VID validation."""
+        # VisDrone-VID papers commonly report COCO-style AP/AP50/AP75, while
+        # the default Ultralytics logs focus on P/R/mAP50/mAP50-95. This
+        # adapter exports the current validation set into temporary COCO JSONs
+        # and runs pycocotools so the project can report both metric families.
         categories = [{"id": i + 1, "name": self.names[i]} for i in range(self.nc)]
         gt_payload = {
             "images": self._visdrone_coco_images,
@@ -211,6 +215,9 @@ class DetectionValidator(BaseValidator):
         max_det_idx = 2
         per_class = []
         for class_idx in range(self.nc):
+            # The precision tensor layout is [IoU, Recall, Class, Area, MaxDet].
+            # Index 0 corresponds to IoU=0.50 and index 5 to IoU=0.75 in the
+            # standard COCO threshold grid {0.50, 0.55, ..., 0.95}.
             ap = precision[:, :, class_idx, area_all_idx, max_det_idx]
             ap = ap[ap > -1]
             ap50 = precision[0, :, class_idx, area_all_idx, max_det_idx]

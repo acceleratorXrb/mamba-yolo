@@ -228,6 +228,9 @@ class v8DetectionLoss:
             if center_feat is None or temporal_state is None:
                 continue
 
+            # Cosine distance enforces feature-level temporal coherence. We only
+            # apply it on stable regions because moving areas naturally change
+            # across frames and should not be over-regularized.
             center_norm = F.normalize(center_feat.float(), dim=1)
             state_norm = F.normalize(temporal_state.float(), dim=1)
             cosine_distance = 1.0 - (center_norm * state_norm).sum(dim=1, keepdim=True)

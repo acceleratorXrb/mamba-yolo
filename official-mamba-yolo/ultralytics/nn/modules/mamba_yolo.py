@@ -277,6 +277,9 @@ class TemporalStateTransfer(nn.Module):
         )
 
     def _scan_memory(self, clip_feats: torch.Tensor, temporal_valid: torch.Tensor | None = None) -> torch.Tensor:
+        # Bidirectional scan is used as a lightweight temporal state surrogate:
+        # it keeps local forward/backward context while also allowing invalid
+        # placeholder frames to be masked out through temporal_valid.
         batch_size, time_dim, channels, height, width = clip_feats.shape
         projected = self.memory_proj(clip_feats.flatten(0, 1)).view(batch_size, time_dim, channels, height, width)
         if temporal_valid is not None and temporal_valid.ndim == 2:
@@ -349,6 +352,9 @@ class TemporalStateTransfer(nn.Module):
             aggregated = (clip_feats * weights).sum(dim=1)
         else:
             aggregated = self._scan_memory(clip_feats, temporal_valid=temporal_valid)
+        # temporal_state is the explicit "temporal branch" output. It is kept
+        # separate from current-frame features so later blocks can implement a
+        # real dual-branch fusion instead of implicit feature averaging.
         temporal_state = self.state_proj(aggregated)
         gate = self.gate(torch.cat([current, temporal_state], dim=1))
         fused = current + gate * temporal_state
@@ -373,6 +379,11 @@ class AdaptiveSparseGuide(nn.Module):
         temporal_valid: torch.Tensor | None = None,
         prev_det_heatmap: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        # The guide uses three signals:
+        # 1) frame difference (motion cue),
+        # 2) feature saliency from the current frame,
+        # 3) optional previous detection heatmap prior.
+        # The last term is currently optional and can be disabled globally.
         if clip_frames is not None and clip_frames.ndim == 5:
             center = clip_frames.shape[1] // 2
             current = clip_frames[:, center]
@@ -482,6 +493,9 @@ class SpatialTemporalFusionBlock(nn.Module):
         )
 
     def forward(self, spatial_feat: torch.Tensor, temporal_feat: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        # spatial_feat keeps single-frame recognition capacity, while
+        # temporal_feat carries clip-level state. The learned gate decides how
+        # much temporal information should be injected at each location/channel.
         spatial_feat = self.spatial_proj(spatial_feat)
         temporal_feat = self.temporal_proj(temporal_feat)
         gate = self.fusion_gate(torch.cat([spatial_feat, temporal_feat], dim=1))
@@ -513,6 +527,9 @@ class MultiScaleTemporalStateBlock(nn.Module):
         )
 
     def forward(self, target_feat: torch.Tensor, propagated_state: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        # Propagate high-level temporal context to the next finer scale. This is
+        # the code counterpart of the "multi-scale temporal state transfer"
+        # described in the thesis target architecture.
         propagated_state = self.state_proj(propagated_state)
         if propagated_state.shape[-2:] != target_feat.shape[-2:]:
             propagated_state = torch.nn.functional.interpolate(
@@ -549,6 +566,12 @@ class TemporalFusionScale(nn.Module):
         temporal_valid: torch.Tensor | None = None,
         prev_det_heatmap: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor | None]]:
+        # Per-scale pipeline:
+        #   current-frame feature -> spatial branch
+        #   clip feature stack    -> temporal branch
+        #   gated dual-branch fusion
+        #   optional sparse guide refinement
+        #   optional temporal-guided XSS refinement
         center_idx = clip_feats.shape[1] // 2
         center_feat = clip_feats[:, center_idx]
         temporal_feat, temporal_state = self.state_transfer(clip_feats, temporal_valid=temporal_valid)
