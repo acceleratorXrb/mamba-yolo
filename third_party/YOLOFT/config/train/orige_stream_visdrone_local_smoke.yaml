@@ -14,7 +14,7 @@ batch: 2
 imgsz: 640
 save: True
 save_period: 1
-cache: False
+cache: ram
 device:
 workers: 0
 project:
