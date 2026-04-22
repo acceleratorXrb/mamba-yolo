@@ -9,7 +9,7 @@ cd mamba-yolo3
 
 作用：获取项目源码并进入项目目录。
 
-## 2. 一键准备主工程
+## 2. 一键准备训练前所需内容
 
 ```bash
 bash scripts/deploy_project.sh all
@@ -21,10 +21,12 @@ bash scripts/deploy_project.sh all
 - 编译 `selective_scan`
 - 尝试准备 `UAVDT`
 - 准备 `VisDrone-VID`
+- 准备 `YOLOFT-S` 本地对照线依赖与数据
 
 说明：
 - `UAVDT` 下载失败时不会阻塞 `VisDrone-VID`
-- `YOLOFT` 不包含在 `all` 里，单独准备
+- `UAVDT` 下载失败时也不会阻塞 `YOLOFT-S`
+- `all` 执行完后，可以直接启动主工程训练或 `YOLOFT-S` 对照训练
 
 ## 3. 单独准备 VisDrone-VID
 
@@ -87,6 +89,9 @@ bash scripts/deploy_project.sh prepare-yoloft
 作用：
 - 给当前项目环境补齐 `YOLOFT` 所需依赖
 - 生成 `YOLOFT` 本地 `VisDrone-VID` 适配数据
+
+说明：
+- 如果你已经执行过 `bash scripts/deploy_project.sh all`，这里通常不需要再单独执行
 
 ## 8. 启动 YOLOFT-S 本地对照训练
 

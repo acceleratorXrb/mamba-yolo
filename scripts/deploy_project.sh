@@ -45,7 +45,7 @@ usage() {
   train-yoloft-s             启动 YOLOFT-S 的本地 VisDrone-VID 对照训练
   eval-visdrone              评测 VisDrone-VID 当前 best.pt
   export-uavdt-det           导出 full UAVDT 官方 DET 格式结果
-  all                        执行 setup-env + prepare-data
+  all                        一次准备主工程与 YOLOFT-S 的训练前依赖
 
 示例:
   bash scripts/deploy_project.sh all
@@ -283,10 +283,11 @@ main() {
     all)
       setup_env
       if ! prepare_uavdt; then
-        warn "UAVDT 自动准备失败，已跳过 UAVDT，继续准备 VisDrone-VID。"
+        warn "UAVDT 自动准备失败，已跳过 UAVDT，继续准备 VisDrone-VID 和 YOLOFT-S。"
         warn "后续如需补齐 UAVDT，请单独执行: bash scripts/deploy_project.sh prepare-uavdt"
       fi
       prepare_visdrone
+      prepare_yoloft
       ;;
     ""|-h|--help|help)
       usage
