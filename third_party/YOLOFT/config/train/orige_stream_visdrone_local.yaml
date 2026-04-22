@@ -10,9 +10,9 @@ datasampler: streamSampler
 
 model:
 data:
-epochs: 30
+epochs: 50
 patience: 50
-batch: 8
+batch: 16
 imgsz: 640
 save: True
 save_period: 2
@@ -33,7 +33,7 @@ cos_lr: False
 close_mosaic: 10
 
 resume: False
-amp: False
+amp: true
 fraction: 1.0
 profile: False
 overlap_mask: False
@@ -41,7 +41,7 @@ mask_ratio: 4
 dropout: 0.0
 
 val: True
-val_interval: 2
+val_interval: 1
 split: test
 save_json: False
 save_hybrid: False

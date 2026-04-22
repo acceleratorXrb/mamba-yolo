@@ -412,7 +412,12 @@ class AdaptiveSparseGuide(nn.Module):
             prev_det_heatmap = prev_det_heatmap * valid_mask
         saliency = center_feat.detach().abs().mean(dim=1, keepdim=True)
         saliency = saliency / saliency.amax(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
-        return self.proj(torch.cat([diff, saliency, prev_det_heatmap], dim=1))
+        in_channels = self.proj[0].in_channels if isinstance(self.proj, nn.Sequential) else 3
+        if in_channels == 2:
+            guide_input = torch.cat([diff, saliency], dim=1)
+        else:
+            guide_input = torch.cat([diff, saliency, prev_det_heatmap], dim=1)
+        return self.proj(guide_input)
 
 
 class SparseGuidedTemporalScan(nn.Module):
@@ -574,6 +579,18 @@ class TemporalFusionScale(nn.Module):
         #   optional temporal-guided XSS refinement
         center_idx = clip_feats.shape[1] // 2
         center_feat = clip_feats[:, center_idx]
+        channels = center_feat.shape[1]
+        if not hasattr(self, "fusion_block"):
+            self.fusion_block = SpatialTemporalFusionBlock(channels).to(center_feat.device)
+        if getattr(self, "enable_sparse_guide", False):
+            if not hasattr(self, "sparse_guide") or self.sparse_guide is None:
+                self.sparse_guide = AdaptiveSparseGuide(channels).to(center_feat.device)
+            if not hasattr(self, "sparse_scan") or self.sparse_scan is None:
+                self.sparse_scan = SparseGuidedTemporalScan(channels).to(center_feat.device)
+        if getattr(self, "enable_temporal_block", False) and (
+            not hasattr(self, "temporal_block") or self.temporal_block is None
+        ):
+            self.temporal_block = TemporalGuidedXSSBlock(channels, channels, n=1).to(center_feat.device)
         temporal_feat, temporal_state = self.state_transfer(clip_feats, temporal_valid=temporal_valid)
         fused, fusion_gate = self.fusion_block(center_feat, temporal_feat)
         guide = None

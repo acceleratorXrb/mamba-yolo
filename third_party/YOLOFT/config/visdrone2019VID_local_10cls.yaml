@@ -10,6 +10,7 @@ val_reimgsz: True
 split_length: [8, 50]
 match_number: 1
 interval: 1
+rho: 4
 save_json: False
 names:
   0: pedestrian

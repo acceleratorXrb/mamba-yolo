@@ -50,12 +50,19 @@ def prepare_split(source_root: Path, local_root: Path, split_name: str, target_s
         label_path = source_labels / f"{image_path.stem}.txt"
         if not label_path.exists():
             raise FileNotFoundError(f"Missing label for {image_path.name}: {label_path}")
-        safe_symlink(image_path, target_images / image_path.name)
-        safe_symlink(label_path, target_labels / label_path.name)
+        # YOLOFT groups frames by the parent directory name. If all images are
+        # flattened into images/train or images/test, the whole split becomes one
+        # fake "video", which breaks stream sampling. Recreate a per-video folder
+        # from the VisDrone filename prefix before `_img`.
+        video_name = image_path.stem.split("_img")[0]
+        rel_image = Path(target_split) / video_name / image_path.name
+        rel_label = Path(target_split) / video_name / label_path.name
+        safe_symlink(image_path, target_images / video_name / image_path.name)
+        safe_symlink(label_path, target_labels / video_name / label_path.name)
         # YOLOFT only rewrites txt entries when they start with "./". In that
         # code path it prepends `path/images_dir`, so entries here must use
         # "./<split>/<name>" instead of plain relative paths.
-        entries.append(f"./{target_split}/{image_path.name}")
+        entries.append(f"./{rel_image.as_posix()}")
         count += 1
 
     split_txt = local_root / ("train.txt" if target_split == "train" else "test.txt")
@@ -77,6 +84,9 @@ def write_dataset_yaml(local_root: Path, yaml_path: Path) -> None:
         "split_length: [8, 50]",
         "match_number: 1",
         "interval: 1",
+        # YOLOFT's stream dataset implementation accesses rho unconditionally.
+        # Keep the author's VisDrone default so local configs behave the same.
+        "rho: 4",
         "save_json: False",
         "names:",
     ]

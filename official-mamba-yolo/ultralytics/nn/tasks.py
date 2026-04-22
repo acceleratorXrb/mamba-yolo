@@ -611,7 +611,7 @@ class TemporalDetectionModel(DetectionModel):
             raise ValueError("temporal_imgs must have shape [B, T, C, H, W].")
         clip_length = temporal_imgs.shape[1]
         center_idx = clip_length // 2
-        use_prev_det_prior = bool(getattr(self.args, "temporal_prev_det_prior", self.temporal_prev_det_prior))
+        use_prev_det_prior = bool(getattr(self.args, "temporal_prev_det_prior", getattr(self, "temporal_prev_det_prior", False)))
         # 1) Extract official Mamba-YOLO detection features for each frame.
         current_feats = self._forward_to_detect(x, profile=profile, visualize=visualize)
         per_scale_feats = [[] for _ in range(len(self.temporal_fusion))]
@@ -653,9 +653,17 @@ class TemporalDetectionModel(DetectionModel):
             temporal_states.append(temporal_state)
             temporal_aux.append(aux)
 
-        use_multiscale_state = bool(getattr(self.args, "temporal_multiscale_state", self.temporal_multiscale_state))
+        use_multiscale_state = bool(
+            getattr(self.args, "temporal_multiscale_state", getattr(self, "temporal_multiscale_state", True))
+        )
         if use_multiscale_state and len(fused_feats) > 1:
             # 3) Top-down temporal state propagation across pyramid scales.
+            if not hasattr(self, "temporal_state_topdown"):
+                temporal_channels = [feat.shape[1] for feat in fused_feats]
+                self.temporal_state_topdown = nn.ModuleList(
+                    MultiScaleTemporalStateBlock(temporal_channels[idx], temporal_channels[idx - 1]).to(fused_feats[0].device)
+                    for idx in range(len(temporal_channels) - 1, 0, -1)
+                )
             propagated_state = temporal_states[-1]
             for block_offset, source_idx in enumerate(range(len(fused_feats) - 2, -1, -1)):
                 block = self.temporal_state_topdown[block_offset]

@@ -20,13 +20,14 @@ bash scripts/deploy_project.sh all
 - 按本机 `nvcc` 自动安装匹配的 `PyTorch`
 - 编译 `selective_scan`
 - 尝试准备 `UAVDT`
-- 准备 `VisDrone-VID`
+- 准备 `VisDrone-VID train/val/test-dev + toolkit`
 - 准备 `YOLOFT-S` 本地对照线依赖与数据
 
 说明：
 - `UAVDT` 下载失败时不会阻塞 `VisDrone-VID`
 - `UAVDT` 下载失败时也不会阻塞 `YOLOFT-S`
 - `all` 执行完后，可以直接启动主工程训练或 `YOLOFT-S` 对照训练
+- `all` 结束后会自动打印部署摘要，直接显示 `VisDrone-VID test-dev`、`YOLOFT`、`UAVDT`、官方 toolkit 运行时是否就绪
 
 ## 3. 单独准备 VisDrone-VID
 
@@ -34,7 +35,7 @@ bash scripts/deploy_project.sh all
 bash scripts/deploy_project.sh prepare-visdrone
 ```
 
-作用：只准备 `VisDrone-VID` 数据，不处理 `UAVDT`。
+作用：只准备 `VisDrone-VID train/val/test-dev + toolkit`，不处理 `UAVDT`。
 
 ## 4. 启动 VisDrone-VID 时序训练
 
@@ -80,7 +81,36 @@ bash scripts/deploy_project.sh eval-visdrone
 - `AP75`
 - 分类别指标
 
-## 7. 单独准备 YOLOFT-S 对照线
+## 7. 导出 VisDrone-VID 官方格式并在可用时调用官方 toolkit
+
+```bash
+bash scripts/deploy_project.sh eval-visdrone-official
+```
+
+作用：
+- 对 `VisDrone-VID test-dev` 导出官方逐视频结果文本
+- 如果本机安装了 `octave` 或 `matlab`，继续调用官方 `VID toolkit`
+- 如果本机没有 `octave/matlab`，只导出官方格式结果，不会中断
+
+输出目录：
+
+```bash
+output_dir/visdrone_vid_official/temporal_dev
+```
+
+关键输出：
+
+```bash
+output_dir/visdrone_vid_official/temporal_dev/test_official_txt
+output_dir/visdrone_vid_official/temporal_dev/test_official_export_summary.json
+output_dir/visdrone_vid_official/temporal_dev/test_official_metrics.json
+```
+
+说明：
+- `test_official_metrics.json` 只有在本机可执行官方 toolkit 时才会生成
+- 官方 toolkit 需要 `octave` 或 `matlab`
+
+## 8. 单独准备 YOLOFT-S 对照线
 
 ```bash
 bash scripts/deploy_project.sh prepare-yoloft
@@ -93,7 +123,7 @@ bash scripts/deploy_project.sh prepare-yoloft
 说明：
 - 如果你已经执行过 `bash scripts/deploy_project.sh all`，这里通常不需要再单独执行
 
-## 8. 启动 YOLOFT-S 本地对照训练
+## 9. 启动 YOLOFT-S 本地对照训练
 
 ```bash
 bash scripts/deploy_project.sh train-yoloft-s
@@ -114,7 +144,7 @@ third_party/YOLOFT/config/visdrone2019VID_local_10cls.yaml
 - YOLOFT 本地训练超参
 - YOLOFT 本地数据配置
 
-## 9. 启动 UAVDT 时序训练
+## 10. 启动 UAVDT 时序训练
 
 ```bash
 bash scripts/deploy_project.sh train-uavdt-temporal
@@ -130,7 +160,7 @@ configs/train/uavdt_full_benchmark_temporal_dev_img640_adamw.yaml
 
 作用：修改 `UAVDT` 时序训练超参。
 
-## 10. 导出 UAVDT 官方 DET 结果
+## 11. 导出 UAVDT 官方 DET 结果
 
 ```bash
 bash scripts/deploy_project.sh export-uavdt-det
@@ -138,7 +168,7 @@ bash scripts/deploy_project.sh export-uavdt-det
 
 作用：导出 `UAVDT` 官方 `DET toolkit` 所需结果格式。
 
-## 11. 主脚本完整命令列表
+## 12. 主脚本完整命令列表
 
 ```bash
 bash scripts/deploy_project.sh setup-env
@@ -151,6 +181,7 @@ bash scripts/deploy_project.sh train-visdrone-temporal
 bash scripts/deploy_project.sh train-uavdt-temporal
 bash scripts/deploy_project.sh train-yoloft-s
 bash scripts/deploy_project.sh eval-visdrone
+bash scripts/deploy_project.sh eval-visdrone-official
 bash scripts/deploy_project.sh export-uavdt-det
 bash scripts/deploy_project.sh all
 ```

@@ -44,6 +44,7 @@ usage() {
   train-uavdt-temporal       启动 full UAVDT 时序开发训练
   train-yoloft-s             启动 YOLOFT-S 的本地 VisDrone-VID 对照训练
   eval-visdrone              评测 VisDrone-VID 当前 best.pt
+  eval-visdrone-official     导出 VisDrone-VID 官方格式结果，并在可用时调用官方 toolkit
   export-uavdt-det           导出 full UAVDT 官方 DET 格式结果
   all                        一次准备主工程与 YOLOFT-S 的训练前依赖
 
@@ -55,6 +56,13 @@ EOF
 
 warn() {
   echo "[WARN] $*" >&2
+}
+
+status_line() {
+  local label="$1"
+  local status="$2"
+  local detail="${3:-}"
+  printf '[STATUS] %-22s %-8s %s\n' "$label" "$status" "$detail"
 }
 
 require_conda() {
@@ -153,7 +161,7 @@ prepare_uavdt() {
 
 prepare_visdrone() {
   "$PYTHON_BIN" "$ROOT/scripts/download_visdrone_vid.py" \
-    --items train val toolkit \
+    --items train val test-dev toolkit \
     --output-dir "$ROOT/data/external/visdrone_vid" \
     --extract \
     --source auto
@@ -169,6 +177,54 @@ prepare_yoloft() {
   "$PIP_BIN" install 'setuptools<81'
   "$PIP_BIN" install -r "$ROOT/third_party/YOLOFT/requirements.txt"
   "$PYTHON_BIN" "$ROOT/third_party/YOLOFT/tools/prepare_visdronevid_local.py"
+}
+
+postflight_summary() {
+  local visdrone_yaml="$ROOT/official-mamba-yolo/ultralytics/cfg/datasets/VisDroneVID.yaml"
+  local visdrone_test_dir="$ROOT/data/processed/VisDroneVID/test/images"
+  local visdrone_toolkit="$ROOT/data/external/visdrone_vid/VisDrone2018-VID-toolkit"
+  local yoloft_data="$ROOT/third_party/YOLOFT/local_data/visdrone2019VID_10cls/train.txt"
+  local uavdt_yaml="$ROOT/official-mamba-yolo/ultralytics/cfg/datasets/UAVDT_full_benchmark.yaml"
+  local uavdt_test="$ROOT/data/processed/UAVDT_full/test/images"
+
+  echo
+  echo "=== 部署摘要 ==="
+  if [[ -x "$PYTHON_BIN" ]]; then
+    status_line "环境" "OK" "$ENV_DIR"
+  else
+    status_line "环境" "MISSING" "$ENV_DIR"
+  fi
+
+  if [[ -d "$visdrone_toolkit" ]]; then
+    status_line "VisDrone toolkit" "OK" "$visdrone_toolkit"
+  else
+    status_line "VisDrone toolkit" "MISSING" "$visdrone_toolkit"
+  fi
+
+  if [[ -f "$visdrone_yaml" && -d "$visdrone_test_dir" ]]; then
+    status_line "VisDrone test-dev" "OK" "$visdrone_test_dir"
+  else
+    status_line "VisDrone test-dev" "MISSING" "$visdrone_test_dir"
+  fi
+
+  if [[ -f "$yoloft_data" ]]; then
+    status_line "YOLOFT local data" "OK" "$yoloft_data"
+  else
+    status_line "YOLOFT local data" "MISSING" "$yoloft_data"
+  fi
+
+  if [[ -f "$uavdt_yaml" && -d "$uavdt_test" ]]; then
+    status_line "UAVDT full" "OK" "$uavdt_test"
+  else
+    status_line "UAVDT full" "PARTIAL" "如需补齐可执行: bash scripts/deploy_project.sh prepare-uavdt"
+  fi
+
+  if command -v octave >/dev/null 2>&1 || command -v matlab >/dev/null 2>&1; then
+    status_line "官方VID toolkit运行时" "OK" "检测到 octave/matlab"
+  else
+    status_line "官方VID toolkit运行时" "MISSING" "仅可导出官方格式结果，不能本机直接跑 toolkit"
+  fi
+  echo
 }
 
 train_visdrone_singleframe() {
@@ -225,6 +281,27 @@ eval_visdrone() {
     --output-dir "$ROOT/output_dir/visdrone_vid_eval/temporal_dev"
 }
 
+eval_visdrone_official() {
+  cd "$ROOT"
+  local extra_args=()
+  if command -v octave >/dev/null 2>&1 || command -v matlab >/dev/null 2>&1; then
+    extra_args+=(--run-toolkit)
+  else
+    warn "未检测到 octave/matlab，将仅导出 VisDrone-VID 官方格式结果，不执行官方 toolkit。"
+  fi
+
+  exec "$PYTHON_BIN" scripts/evaluate_visdrone_vid_official.py \
+    --weights "$ROOT/output_dir/visdrone_vid/mambayolo_visdrone_vid_temporal_dev/weights/best.pt" \
+    --data "$ROOT/official-mamba-yolo/ultralytics/cfg/datasets/VisDroneVID.yaml" \
+    --split test \
+    --device 0 \
+    --imgsz 640 \
+    --batch 6 \
+    --raw-root "$ROOT/data/external/visdrone_vid" \
+    --output-dir "$ROOT/output_dir/visdrone_vid_official/temporal_dev" \
+    "${extra_args[@]}"
+}
+
 export_uavdt_det() {
   cd "$ROOT"
   exec "$PYTHON_BIN" scripts/evaluate_uavdt_official_det.py \
@@ -277,6 +354,9 @@ main() {
     eval-visdrone)
       eval_visdrone
       ;;
+    eval-visdrone-official)
+      eval_visdrone_official
+      ;;
     export-uavdt-det)
       export_uavdt_det
       ;;
@@ -288,6 +368,7 @@ main() {
       fi
       prepare_visdrone
       prepare_yoloft
+      postflight_summary
       ;;
     ""|-h|--help|help)
       usage

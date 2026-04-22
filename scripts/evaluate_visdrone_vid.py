@@ -176,7 +176,7 @@ def run_predictions(
 ) -> list[PredictionRecord]:
     raw_model = getattr(model, "model", None)
     if raw_model is not None and getattr(raw_model, "temporal", False):
-        return run_temporal_predictions(model, image_paths, image_id_map, imgsz, conf, iou, batch)
+        return run_temporal_predictions(model, image_paths, image_id_map, imgsz, conf, iou, batch, device)
 
     predictions: list[PredictionRecord] = []
     for chunk in batched(image_paths, batch):
@@ -219,8 +219,11 @@ def run_temporal_predictions(
     conf: float,
     iou: float,
     batch: int,
+    device: str,
 ) -> list[PredictionRecord]:
     raw_model = model.model
+    target_device = torch.device(device if device == "cpu" else f"cuda:{device}")
+    raw_model.to(target_device)
     raw_model.eval()
     model_device = next(raw_model.parameters()).device
     raw_args = getattr(raw_model, "args", {}) or {}

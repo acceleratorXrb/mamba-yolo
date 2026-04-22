@@ -2,9 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .block import flow_conv
+ALT_CORR_AVAILABLE = False
 try:
     # import alt_cuda_corr
     import alt_cuda_sparse_corr as alt_cuda_corr
+    ALT_CORR_AVAILABLE = True
 except:
     # alt_cuda_corr is not compiled
     pass
@@ -146,12 +148,22 @@ class AlternateCorrBlock:
         self.num_levels = num_levels
         self.radius = radius
         self.stride = stride
+        self.use_alt_cuda = ALT_CORR_AVAILABLE
         
         self.pyramid = []
         for i in range(self.num_levels):
             self.pyramid.append((fmap1, fmaps2[i]))
 
+        # Fall back to the standard all-pairs correlation path when the custom
+        # CUDA correlation op is unavailable on the current machine. This keeps
+        # training/validation functional without requiring extra system toolchains.
+        if not self.use_alt_cuda:
+            self.fallback_corr = CorrBlock(fmap1, fmaps2, num_levels=num_levels, radius=radius)
+
     def __call__(self, coords):
+        if not self.use_alt_cuda:
+            return self.fallback_corr(coords)
+
         coords = coords.permute(0, 2, 3, 1)
         B, H, W, _ = coords.shape
         dim = self.pyramid[0][0].shape[1]
@@ -384,4 +396,3 @@ class NetUpdateBlock(nn.Module):
 #         # scale mask to balence gradients
 #         mask = .25 * self.mask(net)
 #         return net, mask, delta_flow
-
