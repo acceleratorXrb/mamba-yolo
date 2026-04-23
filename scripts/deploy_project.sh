@@ -187,9 +187,13 @@ prepare_visdrone() {
 }
 
 prepare_yoloft() {
+  require_conda
   cd "$ROOT"
+  conda activate "$ENV_DIR"
+
   "$PIP_BIN" install 'setuptools<81'
   "$PIP_BIN" install -r "$ROOT/third_party/YOLOFT/requirements.txt"
+
   # 安装 YOLOFT 的 ultralytics 包（关键步骤）
   cd "$ROOT/third_party/YOLOFT"
   "$PIP_BIN" install -e . --no-build-isolation
