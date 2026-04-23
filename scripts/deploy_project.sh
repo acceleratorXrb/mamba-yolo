@@ -193,6 +193,24 @@ prepare_yoloft() {
   # 安装 YOLOFT 的 ultralytics 包（关键步骤）
   cd "$ROOT/third_party/YOLOFT"
   "$PIP_BIN" install -e . --no-build-isolation
+
+  # 编译 DCNv3 算子（加速训练）
+  echo "[INFO] 编译 DCNv3..."
+  cd "$ROOT/third_party/YOLOFT/ultralytics/nn/modules/ops_dcnv3"
+  if [[ -f setup.py ]]; then
+    TORCH_CUDA_ARCH_LIST="8.6" "$PYTHON_BIN" setup.py build install 2>&1 | tail -5
+    echo "[INFO] DCNv3 编译完成"
+  fi
+
+  # 编译 alt_cuda_corr_sparse 算子
+  echo "[INFO] 编译 alt_cuda_corr_sparse..."
+  cd "$ROOT/third_party/YOLOFT/ultralytics/nn/modules/alt_cuda_corr_sparse"
+  if [[ -f setup.py ]]; then
+    TORCH_CUDA_ARCH_LIST="8.6" "$PYTHON_BIN" setup.py build install 2>&1 | tail -5
+    echo "[INFO] alt_cuda_corr_sparse 编译完成"
+  fi
+
+  # 返回主目录并准备数据
   cd "$ROOT"
   "$PYTHON_BIN" "$ROOT/third_party/YOLOFT/tools/prepare_visdronevid_local.py"
 }

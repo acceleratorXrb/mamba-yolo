@@ -3,7 +3,7 @@
 # so mAP can be observed during development.
 
 epochs: 50
-batch: 4
+batch: 2
 imgsz: 640
 workers: 8
 cache: ram
