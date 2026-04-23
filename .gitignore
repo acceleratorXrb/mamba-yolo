@@ -10,7 +10,6 @@ data/external/
 data/processed/
 
 output_dir/
-official-mamba-yolo/output_dir/
 
 *.pt
 *.pth
@@ -25,13 +24,15 @@ official-mamba-yolo/output_dir/
 *.tar
 *.tar.gz
 
-official-mamba-yolo/selective_scan/build/
-official-mamba-yolo/selective_scan/dist/
-official-mamba-yolo/selective_scan/*.so
-official-mamba-yolo/selective_scan/*.egg-info/
+mamba-yolo-temporal/selective_scan/build/
+mamba-yolo-temporal/selective_scan/dist/
+mamba-yolo-temporal/selective_scan/*.so
+mamba-yolo-temporal/selective_scan/*.egg-info/
 
-official-mamba-yolo/.git/
-official-mamba-yolo/.git.bak/
+mamba-yolo-official/.git.upstream/
+mamba-yolo-official/.git.bak/
+mamba-yolo-temporal/.git/
+mamba-yolo-temporal/.git.bak/
 references/temporal_modules/*/.git/
 references/temporal_modules/*/.git.bak/
 third_party/*/.git/
@@ -45,9 +46,7 @@ third_party/FGFA/
 third_party/YOLOv7_VisDrone/
 
 nonfinite_forward_*.json
-official-mamba-yolo/nonfinite_forward_*.json
 yolov8n.pt
-official-mamba-yolo/yolov8n.pt
 
 # Local reference materials
 references/

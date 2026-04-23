@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--data",
         type=Path,
-        default=Path("/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/cfg/datasets/VisDroneVID.yaml"),
+        default=Path("/home/easyai/桌面/mamba-yolo3/configs/datasets/VisDroneVID_local.yaml"),
         help="Dataset yaml path.",
     )
     parser.add_argument("--split", default="val", choices=["train", "val", "test"], help="Dataset split to evaluate.")

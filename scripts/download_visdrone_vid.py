@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import re
-import subprocess
 import zipfile
 from pathlib import Path
 
@@ -13,16 +12,12 @@ import requests
 FILES = {
     "train": ("1NSNapZQHar22OYzQYuXCugA3QlMndzvw", "VisDrone2019-VID-train.zip"),
     "val": ("1xuG7Z3IhVfGGKMe3Yj6RnrFHqo_d2a1B", "VisDrone2019-VID-val.zip"),
-    "test-dev": ("1-BEq--FcjshTF1UwUabby_LHhYj41os5", "VisDrone2019-VID-test-dev.zip"),
 }
 
 HF_MIRROR_FILES = {
     "train": "https://hf-mirror.com/datasets/AndriiDemk/visDrone_copy/resolve/main/VisDrone2019-VID-train.zip",
     "val": "https://hf-mirror.com/datasets/AndriiDemk/visDrone_copy/resolve/main/VisDrone2019-VID-val.zip",
-    "test-dev": "https://hf-mirror.com/datasets/AndriiDemk/visDrone_copy/resolve/main/VisDrone2019-VID-test-dev.zip",
 }
-
-TOOLKIT_REPO = "https://github.com/VisDrone/VisDrone2018-VID-toolkit.git"
 
 
 def infer_filename(content_disposition: str | None, fallback: str) -> str:
@@ -96,16 +91,6 @@ def resolve_filename_from_url(url: str, fallback: str) -> str:
     return filename
 
 
-def ensure_toolkit(output_dir: Path) -> None:
-    target = output_dir / "VisDrone2018-VID-toolkit"
-    if target.exists():
-        print(f"skip toolkit: already exists at {target}")
-        return
-    output_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "clone", TOOLKIT_REPO, str(target)], check=True)
-    print(f"cloned toolkit to {target}")
-
-
 def extract_zip(zip_path: Path, output_dir: Path) -> None:
     target_dir = output_dir / zip_path.stem
     if target_dir.exists():
@@ -117,12 +102,12 @@ def extract_zip(zip_path: Path, output_dir: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Download official VisDrone-VID dataset and toolkit.")
+    parser = argparse.ArgumentParser(description="Download VisDrone-VID train/val subsets for local validation.")
     parser.add_argument(
         "--items",
         nargs="+",
-        choices=["train", "val", "test-dev", "toolkit"],
-        default=["train", "val", "toolkit"],
+        choices=["train", "val"],
+        default=["train", "val"],
         help="Dataset parts to download.",
     )
     parser.add_argument(
@@ -145,10 +130,6 @@ def main() -> None:
     args = parser.parse_args()
 
     for item in args.items:
-        if item == "toolkit":
-            ensure_toolkit(args.output_dir)
-            continue
-
         file_id, fallback_name = FILES[item]
         output_path = args.output_dir / fallback_name
         mirror_url = HF_MIRROR_FILES[item]

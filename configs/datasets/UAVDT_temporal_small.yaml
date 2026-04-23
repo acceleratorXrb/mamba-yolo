@@ -1,0 +1,8 @@
+path: /home/easyai/桌面/mamba-yolo3/data/processed/UAVDT_temporal_small
+train: train/images
+val: val/images
+test: test/images
+names:
+  0: car
+  1: truck
+  2: bus

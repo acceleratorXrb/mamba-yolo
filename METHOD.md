@@ -56,7 +56,7 @@
 
 新增类：
 
-- [official-mamba-yolo/ultralytics/data/dataset.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/data/dataset.py)
+- [mamba-yolo-temporal/ultralytics/data/dataset.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/data/dataset.py)
   - `YOLOTemporalDataset`
 
 主要作用：
@@ -77,7 +77,7 @@
 
 代码位置：
 
-- [official-mamba-yolo/ultralytics/data/dataset.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/data/dataset.py)
+- [mamba-yolo-temporal/ultralytics/data/dataset.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/data/dataset.py)
 
 ### 4.2 修复时序增强错位
 
@@ -86,7 +86,7 @@
 
 为此新增了专门的时序增强构造：
 
-- [official-mamba-yolo/ultralytics/data/augment.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/data/augment.py)
+- [mamba-yolo-temporal/ultralytics/data/augment.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/data/augment.py)
   - `temporal_v8_transforms`
 
 当前策略：
@@ -112,7 +112,7 @@
 
 新增类：
 
-- [official-mamba-yolo/ultralytics/nn/tasks.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/tasks.py)
+- [mamba-yolo-temporal/ultralytics/nn/tasks.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/tasks.py)
   - `TemporalDetectionModel`
 
 作用：
@@ -131,7 +131,7 @@
 
 核心函数：
 
-- [official-mamba-yolo/ultralytics/nn/tasks.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/tasks.py)
+- [mamba-yolo-temporal/ultralytics/nn/tasks.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/tasks.py)
   - `_forward_to_detect`
   - `_predict_temporal_clip`
 
@@ -154,7 +154,7 @@
 
 所有核心时序模块位于：
 
-- [official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py)
+- [mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py)
 
 ### 6.1 `TemporalStateTransfer`
 
@@ -178,7 +178,7 @@
 
 代码位置：
 
-- [official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py)
+- [mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py)
   - `class TemporalStateTransfer`
 
 ### 6.2 `SpatialTemporalFusionBlock`
@@ -205,7 +205,7 @@
 
 代码位置：
 
-- [official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py)
+- [mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py)
   - `class SpatialTemporalFusionBlock`
 
 ### 6.3 `AdaptiveSparseGuide`
@@ -227,7 +227,7 @@
 
 代码位置：
 
-- [official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py)
+- [mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py)
   - `class AdaptiveSparseGuide`
 
 ### 6.4 `SparseGuidedTemporalScan`
@@ -243,7 +243,7 @@
 
 代码位置：
 
-- [official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py)
+- [mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py)
   - `class SparseGuidedTemporalScan`
 
 ### 6.5 `TemporalGuidedXSSBlock`
@@ -260,7 +260,7 @@
 
 代码位置：
 
-- [official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py)
+- [mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py)
   - `class TemporalGuidedXSSBlock`
 
 ### 6.6 `TemporalFusionScale`
@@ -287,7 +287,7 @@
 
 代码位置：
 
-- [official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py)
+- [mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py)
   - `class TemporalFusionScale`
 
 ### 6.7 `MultiScaleTemporalStateBlock`
@@ -308,9 +308,9 @@
 
 代码位置：
 
-- [official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py)
+- [mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py)
   - `class MultiScaleTemporalStateBlock`
-- [official-mamba-yolo/ultralytics/nn/tasks.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/tasks.py)
+- [mamba-yolo-temporal/ultralytics/nn/tasks.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/tasks.py)
   - `_predict_temporal_clip`
 
 ---
@@ -324,7 +324,7 @@
 
 代码位置：
 
-- [official-mamba-yolo/ultralytics/nn/tasks.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/tasks.py)
+- [mamba-yolo-temporal/ultralytics/nn/tasks.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/tasks.py)
 
 用途：
 
@@ -355,7 +355,7 @@
 
 位置：
 
-- [official-mamba-yolo/ultralytics/utils/loss.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/utils/loss.py)
+- [mamba-yolo-temporal/ultralytics/utils/loss.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/utils/loss.py)
   - `temporal_consistency_loss`
 
 作用：
@@ -406,8 +406,8 @@
 
 代码位置：
 
-- [official-mamba-yolo/ultralytics/cfg/default.yaml](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/cfg/default.yaml)
-- [official-mamba-yolo/ultralytics/cfg/__init__.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/cfg/__init__.py)
+- [mamba-yolo-temporal/ultralytics/cfg/default.yaml](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/cfg/default.yaml)
+- [mamba-yolo-temporal/ultralytics/cfg/__init__.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/cfg/__init__.py)
 
 这些配置项的作用是：
 
@@ -422,7 +422,7 @@
 
 位置：
 
-- [official-mamba-yolo/ultralytics/models/yolo/detect/train.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/models/yolo/detect/train.py)
+- [mamba-yolo-temporal/ultralytics/models/yolo/detect/train.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/models/yolo/detect/train.py)
 
 主要改动：
 
@@ -435,7 +435,7 @@
 
 位置：
 
-- [official-mamba-yolo/ultralytics/models/yolo/detect/val.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/models/yolo/detect/val.py)
+- [mamba-yolo-temporal/ultralytics/models/yolo/detect/val.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/models/yolo/detect/val.py)
 
 主要改动：
 
@@ -543,22 +543,22 @@
 ## 14. 关键代码入口总览
 
 - 时序数据集：
-  - [official-mamba-yolo/ultralytics/data/dataset.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/data/dataset.py)
+  - [mamba-yolo-temporal/ultralytics/data/dataset.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/data/dataset.py)
 
 - 时序增强：
-  - [official-mamba-yolo/ultralytics/data/augment.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/data/augment.py)
+  - [mamba-yolo-temporal/ultralytics/data/augment.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/data/augment.py)
 
 - 时序模型入口：
-  - [official-mamba-yolo/ultralytics/nn/tasks.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/tasks.py)
+  - [mamba-yolo-temporal/ultralytics/nn/tasks.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/tasks.py)
 
 - 时序核心模块：
-  - [official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py)
+  - [mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py)
 
 - 时序一致性损失：
-  - [official-mamba-yolo/ultralytics/utils/loss.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/utils/loss.py)
+  - [mamba-yolo-temporal/ultralytics/utils/loss.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/utils/loss.py)
 
 - `VisDrone-VID` 验证器：
-  - [official-mamba-yolo/ultralytics/models/yolo/detect/val.py](/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/models/yolo/detect/val.py)
+  - [mamba-yolo-temporal/ultralytics/models/yolo/detect/val.py](/home/easyai/桌面/mamba-yolo3/mamba-yolo-temporal/ultralytics/models/yolo/detect/val.py)
 
 - 数据准备脚本：
   - [scripts/download_visdrone_vid.py](/home/easyai/桌面/mamba-yolo3/scripts/download_visdrone_vid.py)

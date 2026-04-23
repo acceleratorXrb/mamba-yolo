@@ -173,7 +173,7 @@ def main() -> None:
     parser.add_argument(
         "--yaml-path",
         type=Path,
-        default=Path("/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/cfg/datasets/UAVDT_full.yaml"),
+        default=Path("/home/easyai/桌面/mamba-yolo3/configs/datasets/UAVDT_full.yaml"),
     )
     args = parser.parse_args()
 

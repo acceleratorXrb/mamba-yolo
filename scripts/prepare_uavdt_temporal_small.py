@@ -159,7 +159,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--yaml",
         type=Path,
-        default=Path("official-mamba-yolo/ultralytics/cfg/datasets/UAVDT_temporal_small.yaml"),
+        default=Path("configs/datasets/UAVDT_temporal_small.yaml"),
         help="Output dataset yaml path.",
     )
     return parser.parse_args()

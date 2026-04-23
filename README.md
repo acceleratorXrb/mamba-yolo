@@ -17,6 +17,15 @@
 
 ## 当前训练命令与超参位置
 
+当前仓库内与 `Mamba-YOLO` 相关的代码树只有两份：
+
+- `mamba-yolo-official`
+  - 上游官方原始代码
+- `mamba-yolo-temporal`
+  - 时序实验代码
+
+两份代码树互不覆盖。单帧官方基线只走 `mamba-yolo-official`，时序实验只走 `mamba-yolo-temporal`。
+
 ### 一次性准备环境与数据
 
 ```bash
@@ -187,12 +196,6 @@ third_party/YOLOFT/config/yoloft/yoloft-S.yaml
 
 ```bash
 bash scripts/deploy_project.sh eval-visdrone
-```
-
-主工程 VisDrone-VID 官方格式导出 / 官方 toolkit 评测：
-
-```bash
-bash scripts/deploy_project.sh eval-visdrone-official
 ```
 
 YOLOFT-S 训练前准备：

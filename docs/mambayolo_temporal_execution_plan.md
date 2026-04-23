@@ -8,16 +8,16 @@
 
 - 数据侧：
   - `YOLOTemporalDataset` 能按 `t-1, t, t+1` 组织三帧输入
-  - 文件位置：`official-mamba-yolo/ultralytics/data/dataset.py`
+  - 文件位置：`mamba-yolo-temporal/ultralytics/data/dataset.py`
 - 模型侧：
   - `TemporalDetectionModel` 在检测头前对三个检测尺度分别做时序融合
-  - 文件位置：`official-mamba-yolo/ultralytics/nn/tasks.py`
+  - 文件位置：`mamba-yolo-temporal/ultralytics/nn/tasks.py`
 - 模块侧：
   - `TemporalStateTransfer`
   - `AdaptiveSparseGuide`
   - `SparseGuidedTemporalScan`
   - `TemporalGuidedXSSBlock`
-  - 文件位置：`official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py`
+  - 文件位置：`mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py`
 - 损失侧：
   - 已经有轻量 `temporal_consistency_loss`
 
@@ -100,9 +100,9 @@
 
 代码落点：
 
-- `official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py`
+- `mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py`
   - 改 `AdaptiveSparseGuide`
-- `official-mamba-yolo/ultralytics/nn/tasks.py`
+- `mamba-yolo-temporal/ultralytics/nn/tasks.py`
   - 在 `TemporalDetectionModel._predict_temporal_clip()` 里收集中心帧或前一帧的预测先验
 
 实现建议：
@@ -150,9 +150,9 @@
 
 代码落点：
 
-- `official-mamba-yolo/ultralytics/nn/tasks.py`
+- `mamba-yolo-temporal/ultralytics/nn/tasks.py`
   - 给 `TemporalDetectionModel` 增加 `memory_bank`
-- `official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py`
+- `mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py`
   - 新增 `TemporalMemoryAggregator`
 
 实现建议：
@@ -207,7 +207,7 @@
 
 代码落点：
 
-- `official-mamba-yolo/ultralytics/nn/modules/mamba_yolo.py`
+- `mamba-yolo-temporal/ultralytics/nn/modules/mamba_yolo.py`
   - 重写 `TemporalStateTransfer._scan_memory()`
 
 实现建议：

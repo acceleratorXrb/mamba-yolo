@@ -1,0 +1,15 @@
+path: /home/easyai/桌面/mamba-yolo3/data/processed/VisDroneVID
+train: train/images
+val: val/images
+test: test/images
+names:
+  0: pedestrian
+  1: person
+  2: bicycle
+  3: car
+  4: van
+  5: truck
+  6: tricycle
+  7: awning-tricycle
+  8: bus
+  9: motor

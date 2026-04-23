@@ -48,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--data",
         type=Path,
-        default=Path("/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/cfg/datasets/UAVDT_full_benchmark.yaml"),
+        default=Path("/home/easyai/桌面/mamba-yolo3/configs/datasets/UAVDT_full_benchmark.yaml"),
         help="Dataset yaml path.",
     )
     parser.add_argument("--split", default="test", choices=["train", "val", "test"], help="Dataset split.")

@@ -167,7 +167,7 @@ def main() -> None:
     parser.add_argument(
         "--yaml-path",
         type=Path,
-        default=Path("/home/easyai/桌面/mamba-yolo3/official-mamba-yolo/ultralytics/cfg/datasets/VisDroneVID.yaml"),
+        default=Path("/home/easyai/桌面/mamba-yolo3/configs/datasets/VisDroneVID_local.yaml"),
         help="Path to write the dataset YAML.",
     )
     args = parser.parse_args()
@@ -176,10 +176,6 @@ def main() -> None:
         "train": args.raw_root / "VisDrone2019-VID-train",
         "val": args.raw_root / "VisDrone2019-VID-val",
     }
-    optional_test_dir = args.raw_root / "VisDrone2019-VID-test-dev"
-    if optional_test_dir.exists():
-        subsets["test"] = optional_test_dir
-
     args.output_root.mkdir(parents=True, exist_ok=True)
     summary_lines = []
     for split_name, subset_root in subsets.items():
